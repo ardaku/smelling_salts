@@ -1,0 +1,20 @@
+[package]
+name = "waker-thread"
+version = "0.1.0"
+authors = ["Jeron Aldaron Lau <jeronlau@plopgrizzly.com>"]
+edition = "2018"
+
+license = "MIT OR BSL-1.0"
+description = "Wakes threads when their file descriptors are ready using the OS's event queue."
+documentation = "https://docs.rs/waker-thread"
+homepage = "https://github.com/LordAldaron/waker-thread/blob/master/changelog.md"
+repository = "https://github.com/LordAldaron/waker-thread"
+readme = "README.md"
+keywords = ["futures", "platform-agnostic", "cross-platform", "io", "interrupt"]
+categories = ["asynchronous", "rust-patterns"]
+
+[badges]
+travis-ci = { repository = "LordAldaron/waker-thread" }
+maintenance = { status = "actively-developed" }
+
+[dependencies]
