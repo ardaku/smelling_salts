@@ -102,7 +102,9 @@ fn start() {
                     // Ignore error
                     continue;
                 }
-                let ptr = ev.assume_init().data.ptr.cast::<Ptr>();
+                let ptr: u64 = ev.assume_init().data.uint64;
+                println!("{:X}", ptr);
+                let ptr: *mut raw::c_void = mem::transmute(ev.assume_init().data);
                 dbg!(ptr);
                 if ptr.is_null() {
                     let mut buffer = mem::MaybeUninit::<[u8; 1]>::uninit();
@@ -112,7 +114,7 @@ fn start() {
                     assert_eq!(len, 1);
                     break;
                 }
-                let mut data = Box::from_raw(ptr);
+                let mut data = Box::from_raw(ptr.cast::<Ptr>());
                 // Wake waiting thread if it's waiting.
                 if let Some(waker) = (*data).take() {
                     waker.wake();
@@ -142,7 +144,11 @@ fn get_fds() -> (raw::c_int, raw::c_int) {
 }
 
 /// A listener on a file descriptor.
-pub struct Listener(raw::c_int, Box<EpollEvent>, Box<EpollEvent>);
+pub struct Listener {
+    fd: raw::c_int, // File descriptor for this
+    a: Box<EpollEvent>,
+    b: Box<EpollEvent>,
+}
 
 impl Listener {
     /// Create a new Listener (start listening on file descriptor).
@@ -158,35 +164,38 @@ impl Listener {
     unsafe fn init(epoll_fd: raw::c_int, fd: raw::c_int, is: bool) -> Listener {
         // Build two EpollEvent structures to switch between.
         let events = EPOLLIN | EPOLLOUT;
-        let ptr = if is {
+        let ptr_a = if is {
             let data: *mut Ptr = Box::into_raw(Box::new(None));
             data.cast()
         } else {
             ptr::null_mut()
         };
-        let ptr_clone = if is {
+        let ptr_b = if is {
             let data: *mut Ptr = Box::into_raw(Box::new(None));
             data.cast()
         } else {
             ptr::null_mut()
         };
-        let event = Box::new(EpollEvent { events, data: EpollData { ptr } });
-        let mut event_clone = event.clone();
-        event_clone.data = EpollData { ptr: ptr_clone };
-        let event = Box::into_raw(event);
+        let data_a = EpollData { ptr: ptr_a };
+        let data_b = EpollData { ptr: ptr_b };
+        let event_a = Box::new(EpollEvent { events, data: data_a });
+        let event_b = Box::new(EpollEvent { events, data: data_b });
+
+        let ev_a: *mut EpollEvent = mem::transmute_copy(&event_a);
+        let ev_b: *mut EpollEvent = mem::transmute_copy(&event_b);
 
         // This C FFI call is safe because, according to the epoll
         // documentation, adding is safe while another thread is waiting on
         // epoll, the mutable reference to EpollEvent isn't used after the call,
         // and the box lifetime is handled properly by this struct.
         // Shouldn't fail
-        error(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, event)).unwrap();
+        error(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, ev_a)).unwrap();
 
-        dbg!(event);
-        // Re-construct box, so that it can be free'd at drop.
-        let event = Box::from_raw(event);
+        dbg!((*ev_a).data.ptr);
+        dbg!((*ev_b).data.ptr);
+
         // Construct the listener.
-        Listener(fd, event, event_clone)
+        Listener { fd, a: event_a, b: event_b }
     }
 
     /// Attach a waker to this Listener.  Do this before checking for new data.
@@ -195,7 +204,7 @@ impl Listener {
         let (epoll_fd, _) = get_fds();
         // Move waker into new box.
         unsafe {
-            (*(*self.2).data.ptr.cast::<Ptr>()) = Some(waker);
+            (*(*self.b).data.ptr.cast::<Ptr>()) = Some(waker);
         }
         // This C FFI call is safe because, according to the epoll
         // documentation, modifying is safe while another thread is waiting on
@@ -203,13 +212,13 @@ impl Listener {
         // call.
         unsafe {
             // Copy box, into_raw won't run constructor twice.
-            let data: *mut EpollEvent = Box::into_raw(mem::transmute_copy(&self.2));
+            let data: *mut EpollEvent = Box::into_raw(mem::transmute_copy(&self.b));
             dbg!(data);
             // Shouldn't fail
-            error(epoll_ctl(epoll_fd, EPOLL_CTL_MOD, self.0, data)).unwrap();
+            error(epoll_ctl(epoll_fd, EPOLL_CTL_MOD, self.fd, data)).unwrap();
         };
         // Swap the two boxes to avoid memory bugs.
-        mem::swap(&mut self.2, &mut self.1);
+        mem::swap(&mut self.b, &mut self.a);
     }
 
     /// Exit the thread.
@@ -223,8 +232,8 @@ impl Listener {
     }
 
     unsafe fn free(&mut self) {
-        // FIXME
-        /*// Get the epoll file descriptor.
+        println!("Free");
+        // Get the epoll file descriptor.
         let (epoll_fd, _) = get_fds();
         // This C FFI call is safe because, according to the epoll
         // documentation, deleting is safe while another thread is waiting on
@@ -232,10 +241,10 @@ impl Listener {
         // call.  It's also necessary to guarentee the Box<Ptr> isn't used after
         // free.
         // Shouldn't fail - EpollEvent is unused, but can't be null
-        error(epoll_ctl(epoll_fd, EPOLL_CTL_DEL, self.0, &mut EpollEvent {
+        error(epoll_ctl(epoll_fd, EPOLL_CTL_DEL, self.fd, &mut EpollEvent {
             events: EPOLLIN | EPOLLOUT,
             data: EpollData { ptr: ptr::null_mut() },
-        })).unwrap();*/
+        })).unwrap();
     }
 }
 
