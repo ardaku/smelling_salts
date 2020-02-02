@@ -209,13 +209,13 @@ impl Listener {
     pub fn wake_on_event(&mut self, waker: task::Waker) {
         // Get the epoll file descriptor.
         let (epoll_fd, _) = get_fds();
-        // Move waker into new box.
-        unsafe { *self.b = Some(waker); }
         // This C FFI call is safe because, according to the epoll
         // documentation, modifying is safe while another thread is waiting on
         // epoll, and the mutable reference to EpollEvent isn't used after the
         // call.
         unsafe {
+            // Move waker into new box.
+            *self.b = Some(waker);
             // Transmute copy box, don't run constructor twice.
             let data: *mut EpollEvent = mem::transmute_copy(&self.b);
             // Shouldn't fail
@@ -227,7 +227,6 @@ impl Listener {
 
     /// Exit the thread.
     pub fn exit(&self) {
-        unsafe { self.free() };
         // Get the epoll file descriptor.
         let (_, write_fd) = get_fds();
         // Tell the loop to stop waiting, so that it actually exits.
@@ -267,31 +266,32 @@ impl Listener {
 
 impl Drop for Listener {
     fn drop(&mut self) {
-        // Free box_b
-        let _ = unsafe { Box::<Ptr>::from_raw(self.b) };
-        // If epoll instance is already freed, no point in deregistering.
-        if !FREED.load(atomic::Ordering::SeqCst) {
-            // Unregister listener
-            unsafe {
+        unsafe {
+            // Free box_b
+            let _ =  { Box::<Ptr>::from_raw(self.b) };
+            // If epoll instance is already freed, no point in deregistering.
+            if !FREED.load(atomic::Ordering::SeqCst) {
+                // Unregister listener
                 self.free();
             }
-        }
-        // Send message to free box_a, since it might stil be used
-
-        // Get the epoll file descriptor.
-        let (_, write_fd) = get_fds();
-        //
-        let a: [u8; mem::size_of::<usize>()] = unsafe { mem::transmute(self.a) };
-        let mut fail = false;
-        // Tell the loop to stop waiting, so that it actually exits.
-        if unsafe { write(write_fd, [1u8].as_ptr().cast(), 1) } != 1 {
-            fail = true;
-        }
-        if unsafe { write(write_fd, a.as_ptr().cast(), mem::size_of::<usize>()) } != mem::size_of::<usize>() as isize {
-            fail = true;
-        }
-        if fail || FREED.load(atomic::Ordering::SeqCst) {
-            let _ = unsafe { Box::<Ptr>::from_raw(self.a) };
+            // Get the epoll file descriptor.
+            let (_, write_fd) = get_fds();
+            //
+            let mut fail = false;
+            // Send message to free box_a, since it might stil be used
+            let pointer: [u8; mem::size_of::<usize>()] = mem::transmute(self.a);
+            if write(write_fd, [1u8].as_ptr().cast(), 1) != 1 {
+                fail = true;
+            }
+            if write(write_fd, pointer.as_ptr().cast(), mem::size_of::<usize>())
+                != mem::size_of::<usize>() as isize
+            {
+                fail = true;
+            }
+            // If epoll thread has already finished, free on this thread.
+            if fail || FREED.load(atomic::Ordering::SeqCst) {
+                let _ = Box::<Ptr>::from_raw(self.a);
+            }
         }
     }
 }
