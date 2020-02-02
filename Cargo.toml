@@ -1,20 +1,23 @@
 [package]
-name = "waker-thread"
+name = "smelling-salts"
 version = "0.1.0"
 authors = ["Jeron Aldaron Lau <jeronlau@plopgrizzly.com>"]
 edition = "2018"
 
 license = "MIT OR BSL-1.0"
-description = "Wakes threads when their file descriptors are ready using the OS's event queue."
-documentation = "https://docs.rs/waker-thread"
-homepage = "https://github.com/LordAldaron/waker-thread/blob/master/changelog.md"
-repository = "https://github.com/LordAldaron/waker-thread"
+description = """
+Start a thread to wake an async executor when the OS's I/O event notifier
+gathers that the hardware is ready.
+"""
+documentation = "https://docs.rs/smelling-salts"
+homepage = "https://github.com/LordAldaron/smelling-salts/blob/master/changelog.md"
+repository = "https://github.com/LordAldaron/smelling-salts"
 readme = "README.md"
 keywords = ["futures", "platform-agnostic", "cross-platform", "io", "interrupt"]
 categories = ["asynchronous", "rust-patterns"]
 
 [badges]
-travis-ci = { repository = "LordAldaron/waker-thread" }
+travis-ci = { repository = "LordAldaron/smelling-salts" }
 maintenance = { status = "actively-developed" }
 
 [dependencies]

@@ -1,4 +1,4 @@
-use waker_thread::Listener;
+use smelling_salts::Listener;
 
 fn main() {
     let listener = Listener::new(1 /* STDIN */);
