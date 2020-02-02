@@ -5,9 +5,10 @@ use std::mem;
 use std::task;
 use std::ptr;
 use std::thread;
+use std::sync;
 use std::sync::atomic;
 
-type Ptr = (Option<task::Waker>, atomic::AtomicBool);
+type Ptr = Option<task::Waker>;
 
 const EPOLLIN: u32 = 0x001;
 const EPOLLOUT: u32 = 0x004;
@@ -62,6 +63,9 @@ static mut WRITE_FD: mem::MaybeUninit<raw::c_int> = mem::MaybeUninit::uninit();
 /// Once they have been initialized, they don't change, so reading them is safe.
 static INIT: std::sync::Once = std::sync::Once::new();
 
+/// For waiting for exit.
+static mut PAIR: mem::MaybeUninit<(sync::Mutex<bool>, sync::Condvar)> = mem::MaybeUninit::uninit();
+
 /// 
 static FREED: atomic::AtomicBool = atomic::AtomicBool::new(false);
 
@@ -76,8 +80,6 @@ fn error(err: raw::c_int) -> Result<(), raw::c_int> {
 
 // Free the Epoll instance
 fn free(epoll_fd: raw::c_int) {
-    println!("==FREE==");
-
     // close() should never fail.
     let ret = unsafe {
         close(epoll_fd)
@@ -87,8 +89,6 @@ fn free(epoll_fd: raw::c_int) {
 
 /// Start the Epoll Thread, if not already started, and return it.
 fn start() {
-    println!("==START==");
-
     unsafe {
         // Create a new epoll instance.
         let epoll_fd = epoll_create1(O_CLOEXEC /* thread-safe */);
@@ -100,8 +100,10 @@ fn start() {
         let [read_fd, write_fd] = pipe.assume_init();
         WRITE_FD = mem::MaybeUninit::new(write_fd);
         // Add read pipe to epoll instance.
-        let mut pipe_listener = Listener::init(epoll_fd, read_fd, false);
-        
+        let pipe_listener = Listener::init(epoll_fd, read_fd, false);
+        // Make PAIR
+        PAIR = mem::MaybeUninit::new((sync::Mutex::new(false), sync::Condvar::new()));
+
         // Spawn and detach the thread.
         thread::spawn(move || {
             // Run until pipe creates an interrupt.
@@ -120,11 +122,14 @@ fn start() {
                     assert_eq!(len, 1);
                     match ret {
                         0 => {
-                            println!("EXITING!!");
+                            let (lock, cvar) = &(*PAIR.as_ptr());
+                            let mut started = lock.lock().unwrap();
+                            *started = true;
+                            // We notify the condvar that the value has changed.
+                            cvar.notify_one();
                             break
                         },
                         1 => {
-                            println!("Freeing on event");
                             let mut buffer = mem::MaybeUninit::<[u8; mem::size_of::<usize>()]>::uninit();
                             let len = read(read_fd, buffer.as_mut_ptr().cast(), mem::size_of::<usize>());
                             let ret = buffer.assume_init();
@@ -136,7 +141,7 @@ fn start() {
                 }
                 let ptr: *mut Ptr = ptr.cast();
                 // Wake waiting thread if it's waiting.
-                if let Some(waker) = (*ptr).0.take() {
+                if let Some(waker) = (*ptr).take() {
                     waker.wake();
                 }
             }
@@ -152,8 +157,6 @@ fn start() {
 /// Safely get `(epoll_fd, write_fd)`
 #[inline(always)]
 fn get_fds() -> (raw::c_int, raw::c_int) {
-    println!("GET FDS");
-
     // Make sure that epoll thread has already started.  This way, we know that
     // the file descriptors have been initialized.
     INIT.call_once(start);
@@ -176,8 +179,6 @@ unsafe impl Send for Listener {}
 impl Listener {
     /// Create a new Listener (start listening on file descriptor).
     pub fn new(fd: raw::c_int) -> Listener {
-        println!("NEW Listener");
-
         // Get the epoll file descriptor.
         let (epoll_fd, _) = get_fds();
         // Create the listener
@@ -187,13 +188,11 @@ impl Listener {
     }
 
     unsafe fn init(epoll_fd: raw::c_int, fd: raw::c_int, is: bool) -> Listener {
-        println!("INIT Listener");
-
         // Check for input and output
         let events = EPOLLIN | EPOLLOUT;
         // Build two EpollEvent structures to switch between.
-        let box_a: *mut Ptr = if is { Box::into_raw(Box::new((None, atomic::AtomicBool::new(false)))) } else { ptr::null_mut() };
-        let box_b: *mut Ptr = if is { Box::into_raw(Box::new((None, atomic::AtomicBool::new(false)))) } else { ptr::null_mut() };
+        let box_a: *mut Ptr = if is { Box::into_raw(Box::new(None)) } else { ptr::null_mut() };
+        let box_b: *mut Ptr = if is { Box::into_raw(Box::new(None)) } else { ptr::null_mut() };
         // This C FFI call is safe because, according to the epoll
         // documentation, adding is safe while another thread is waiting on
         // epoll, the mutable reference to EpollEvent isn't used after the call,
@@ -208,12 +207,10 @@ impl Listener {
 
     /// Attach a waker to this Listener.  Do this before checking for new data.
     pub fn wake_on_event(&mut self, waker: task::Waker) {
-        println!("WAKE Listener");
-
         // Get the epoll file descriptor.
         let (epoll_fd, _) = get_fds();
         // Move waker into new box.
-        unsafe { (*self.b).0 = Some(waker); }
+        unsafe { *self.b = Some(waker); }
         // This C FFI call is safe because, according to the epoll
         // documentation, modifying is safe while another thread is waiting on
         // epoll, and the mutable reference to EpollEvent isn't used after the
@@ -230,25 +227,31 @@ impl Listener {
 
     /// Exit the thread.
     pub fn exit(&self) {
-        FREED.store(true, atomic::Ordering::SeqCst);
-
-        println!("EXIT Listener");
-
+        unsafe { self.free() };
         // Get the epoll file descriptor.
         let (_, write_fd) = get_fds();
         // Tell the loop to stop waiting, so that it actually exits.
         if unsafe { write(write_fd, [0u8].as_ptr().cast(), 1) } != 1 {
             panic!("Writing to the pipe failed, should never happen!");
         }
+        // Wait until thread has finished exiting.
+        {
+            let (lock, cvar) = unsafe { &(*PAIR.as_ptr()) };
+            let mut started = lock.lock().unwrap();
+            while !*started {
+                started = cvar.wait(started).unwrap();
+            }
+        }
+        // Free Pair
+        unsafe { let _ = ptr::read(PAIR.as_ptr()); }
+
+        // Set free'd to true: thread has finished.
+        FREED.store(true, atomic::Ordering::SeqCst);
     }
 
-    unsafe fn free(&mut self) {
-        println!("FREE Listener");
-
-        println!("Free");
+    unsafe fn free(&self) {
         // Get the epoll file descriptor.
         let (epoll_fd, _) = get_fds();
-        println!("Got FDS");
         // This C FFI call is safe because, according to the epoll
         // documentation, deleting is safe while another thread is waiting on
         // epoll, and the mutable reference to EpollEvent isn't used after the
@@ -264,14 +267,15 @@ impl Listener {
 
 impl Drop for Listener {
     fn drop(&mut self) {
-        println!("DROP Listener");
         // Free box_b
         let _ = unsafe { Box::<Ptr>::from_raw(self.b) };
-        // Unregister listener
-        unsafe {
-            self.free();
+        // If epoll instance is already freed, no point in deregistering.
+        if !FREED.load(atomic::Ordering::SeqCst) {
+            // Unregister listener
+            unsafe {
+                self.free();
+            }
         }
-        println!("Free boxes");
         // Send message to free box_a, since it might stil be used
 
         // Get the epoll file descriptor.
@@ -287,9 +291,7 @@ impl Drop for Listener {
             fail = true;
         }
         if fail || FREED.load(atomic::Ordering::SeqCst) {
-            println!("Freeing after pipe is alrady closd");
             let _ = unsafe { Box::<Ptr>::from_raw(self.a) };
         }
-        println!("DROPPED Listener");
     }
 }
