@@ -1,12 +1,125 @@
-use smelling_salts::Listener;
+use pasts;
+use smelling_salts::Device;
 
-fn main() {
-    let listener = Listener::new(1 /* STDIN */);
+use std::os::raw;
+use std::future::Future;
+use std::task::{Context, Poll};
+use std::pin::Pin;
+use std::mem;
+use std::convert::TryInto;
+
+#[allow(non_camel_case_types)]
+type c_ssize = isize; // True for most unix
+#[allow(non_camel_case_types)]
+type c_size = usize; // True for most unix
+
+const MAGIC_NUMBER: u32 = 0xDEAD_BEEF;
+
+// From fcntl.h
+const O_CLOEXEC: raw::c_int = 0o2000000;
+const O_NONBLOCK: raw::c_int = 0o0004000;
+const O_DIRECT: raw::c_int = 0o0040000;
+
+    extern "C" {
+    fn pipe2(pipefd: *mut [raw::c_int; 2], flags: raw::c_int) -> raw::c_int;
+    fn write(fd: raw::c_int, buf: *const raw::c_void, count: c_size) -> c_ssize;
+    fn read(fd: raw::c_int, buf: *mut raw::c_void, count: c_size) -> c_ssize;
+    #[cfg_attr(target_os = "linux",
+           link_name = "__errno_location")]
+    fn errno_location() -> *mut raw::c_int;
+}
+
+// Convert a C error (negative on error) into a result.
+fn error(err: raw::c_int) -> Result<(), raw::c_int> {
+    if err < 0 {
+        Err(err)
+    } else {
+        Ok(())
+    }
+}
+
+// Create the sender and receiver for a pipe.
+fn new_pipe() -> (raw::c_int, raw::c_int) {
+    let [recver, sender] = unsafe {
+        // Create pipe for communication
+        let mut pipe = mem::MaybeUninit::<[raw::c_int; 2]>::uninit();
+        error(pipe2(pipe.as_mut_ptr(), O_CLOEXEC | O_NONBLOCK | O_DIRECT)).unwrap();
+        pipe.assume_init()
+    };
+
+    (sender, recver)
+}
+
+fn write_u32(fd: raw::c_int, data: u32) {
+    let len: usize = unsafe {
+        write(fd, [data].as_ptr().cast(), mem::size_of::<u32>()).try_into().unwrap()
+    };
+    assert_eq!(len, mem::size_of::<u32>());
+}
+
+fn read_u32(fd: raw::c_int) -> Option<u32> {
+    let ret = unsafe {
+        let mut buffer = mem::MaybeUninit::<u32>::uninit();
+        let len: usize = read(fd, buffer.as_mut_ptr().cast(), mem::size_of::<u32>()).try_into().unwrap_or_else(|_error| {
+            let errno = *errno_location();
+            if errno == 11 {
+                0
+            } else {
+                panic!("errno {}")
+            }
+        });
+        if len == 0 {
+            return None;
+        }
+        assert_eq!(len, mem::size_of::<u32>());
+        buffer.assume_init()
+    };
+    Some(ret)
+}
+
+pub struct PipeReceiver(Device);
+
+impl PipeReceiver {
+    pub fn new(fd: raw::c_int) -> Self {
+        PipeReceiver(Device::new(fd))
+    }
+}
+
+pub struct PipeFuture<'a>(&'a PipeReceiver);
+
+impl<'a> PipeFuture<'a> {
+    pub fn new(recver: &'a PipeReceiver) -> Self {
+        PipeFuture(recver)
+    }
+}
+
+impl<'a> Future for PipeFuture<'a> {
+    type Output = u32;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        if let Some(output) = read_u32((self.0).0.fd()) {
+            Poll::Ready(output)
+        } else {
+            let waker = cx.waker();
+            (self.0).0.register_waker(waker.clone());
+            Poll::Pending
+        }
+    }
+}
+
+async fn async_main() {
+    let (sender, recver) = new_pipe();
+    let device = PipeReceiver::new(recver);
 
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(1000));
-        listener.exit();
+        write_u32(sender, MAGIC_NUMBER);
     });
 
-    std::thread::sleep(std::time::Duration::from_millis(2000));
+    let output = PipeFuture::new(&device).await;
+    assert_eq!(output, MAGIC_NUMBER);
+}
+
+fn main() {
+    <pasts::ThreadInterrupt as pasts::Interrupt>::block_on(async_main());
 }

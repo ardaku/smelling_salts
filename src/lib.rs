@@ -1,21 +1,21 @@
-//! An OS thread for waking other threads based on file descriptor events.
+//! Start a thread to wake an async executor when the OS's I/O event notifier
+//! discovers that the hardware is ready.
 
-use std::mem;
 use std::os::raw;
-use std::ptr;
-use std::sync;
-use std::sync::atomic;
-use std::task;
+use std::task::Waker;
 use std::thread;
-
-type Ptr = Option<task::Waker>;
+use std::sync::Mutex;
+use std::mem::MaybeUninit;
+use std::sync::Once;
+use std::convert::TryInto;
+use std::mem;
 
 const EPOLLIN: u32 = 0x001;
-const EPOLLOUT: u32 = 0x004;
+// const EPOLLOUT: u32 = 0x004;
 
 const EPOLL_CTL_ADD: i32 = 1;
 const EPOLL_CTL_DEL: i32 = 2;
-const EPOLL_CTL_MOD: i32 = 3;
+// const EPOLL_CTL_MOD: i32 = 3;
 
 const O_CLOEXEC: raw::c_int = 0x0008_0000;
 
@@ -42,7 +42,7 @@ type c_size = usize; // True for most unix
 
 extern "C" {
     fn epoll_create1(flags: raw::c_int) -> raw::c_int;
-    fn close(fd: raw::c_int) -> raw::c_int;
+    // fn close(fd: raw::c_int) -> raw::c_int;
     fn epoll_ctl(
         epfd: raw::c_int,
         op: raw::c_int,
@@ -60,22 +60,116 @@ extern "C" {
     fn read(fd: raw::c_int, buf: *mut raw::c_void, count: c_size) -> c_ssize;
 }
 
-/// File descriptor for the epoll instance.
-static mut EPOLL_FD: mem::MaybeUninit<raw::c_int> = mem::MaybeUninit::uninit();
+// Used to initialize the hardware thread.
+static INIT: Once = Once::new();
+static mut SHARED_CONTEXT: SharedContext = SharedContext::new();
 
-/// File descriptor for the write side of the pipe.
-static mut WRITE_FD: mem::MaybeUninit<raw::c_int> = mem::MaybeUninit::uninit();
+struct DeviceID(u64);
 
-/// Whether or not static mutable globals have been initialized.
-///
-/// Once they have been initialized, they don't change, so reading them is safe.
-static INIT: std::sync::Once = std::sync::Once::new();
+/// A message sent from a thread to the hardware thread.
+enum Message {
+    /// Add device (ID, FD).
+    Device(DeviceID, raw::c_int),
+    /// There's a new waker for a device.
+    Waker(DeviceID, Waker),
+    /// Disconnect a device.
+    Disconnect(raw::c_int),
+}
 
-/// For waiting for exit.
-static mut PAIR: mem::MaybeUninit<(sync::Mutex<bool>, sync::Condvar)> = mem::MaybeUninit::uninit();
+// This function checks for hardware events using epoll_wait (blocking I/O) in
+// a loop.
+fn hardware_thread(recver: raw::c_int) {
+    // Wakers
+    let mut wakers: Vec<Option<Waker>> = vec![None];
 
-///
-static FREED: atomic::AtomicBool = atomic::AtomicBool::new(false);
+    // Create a new epoll instance.
+    let epoll_fd = unsafe { epoll_create1(O_CLOEXEC) };
+    error(epoll_fd).unwrap();
+
+    // Add receiver to epoll.
+    unsafe {
+        error(epoll_ctl(
+            epoll_fd,
+            EPOLL_CTL_ADD,
+            recver,
+            &mut EpollEvent {
+                events: EPOLLIN /* available for read operations */,
+                data: EpollData { uint64: 0 }, // Use reserved ID, 0 for pipe
+            },
+        ))
+        .unwrap();
+    }
+
+    // An infinite loop that goes until the program exits.
+    loop {
+        // Wait
+        let mut ev = MaybeUninit::<EpollEvent>::uninit();
+        // Wait for something to happen.
+        if unsafe { epoll_wait(
+            epoll_fd,
+            ev.as_mut_ptr(),
+            1,  /* Get one event at a time */
+            -1, /* wait indefinitely */
+        ) } < 0
+        {
+            // Ignore error
+            continue;
+        }
+        let index = DeviceID(unsafe { ev.assume_init().data.uint64 });
+
+        // Check epoll event for which hardware (or recv).
+        if index.0 == 0 { // Pipe
+            let mut buffer = mem::MaybeUninit::<Message>::uninit();
+            let len = unsafe { read(recver, buffer.as_mut_ptr().cast(),
+                mem::size_of::<Message>()) };
+            let message = unsafe { buffer.assume_init() };
+            assert_eq!(len as usize, mem::size_of::<Message>());
+            match message {
+                Message::Device(device_id, device_fd) => {
+                    let index: usize = device_id.0.try_into().unwrap();
+                    // Resize wakers Vec
+                    wakers.resize(wakers.len().max(index), None);
+                    // Register into epoll
+                    unsafe { error(epoll_ctl(
+                        epoll_fd,
+                        EPOLL_CTL_ADD,
+                        device_fd,
+                        &mut EpollEvent {
+                            events: EPOLLIN /* available for read operations */,
+                            data: EpollData { uint64: device_id.0 }, 
+                        },
+                    ))
+                    .unwrap(); }
+                },
+                Message::Waker(device_id, waker) => {
+                    let index: usize = device_id.0.try_into().unwrap();
+                    // Place waker into wakers Vec
+                    wakers[index - 1] = Some(waker);
+                },
+                Message::Disconnect(device_fd) => unsafe {
+                    // Unregister from epoll
+                    error(epoll_ctl(
+                        epoll_fd,
+                        EPOLL_CTL_DEL,
+                        device_fd,
+                        &mut EpollEvent { /* ignored, can't be null, though */
+                            events: EPOLLIN /* available for read operations */,
+                            data: EpollData { uint64: 0 }, 
+                        },
+                    ))
+                    .unwrap();
+                },
+            }
+            continue;
+        }
+
+        // File descriptor (device wake)
+        let id: usize = index.0.try_into().unwrap();
+        if let Some(waker) = wakers[id - 1].take() {
+            waker.wake();
+        }
+    }
+}
 
 // Convert a C error (negative on error) into a result.
 fn error(err: raw::c_int) -> Result<(), raw::c_int> {
@@ -86,252 +180,145 @@ fn error(err: raw::c_int) -> Result<(), raw::c_int> {
     }
 }
 
-// Free the Epoll instance
-fn free(epoll_fd: raw::c_int) {
+// Free a file descriptor
+/*fn fd_close(fd: raw::c_int) {
     // close() should never fail.
-    let ret = unsafe { close(epoll_fd) };
+    let ret = unsafe { close(fd) };
     error(ret).unwrap();
-}
+}*/
 
-/// Start the Epoll Thread, if not already started, and return it.
-fn start() {
-    #[allow(clippy::mutex_atomic)]
+fn context() -> &'static mut Mutex<Context> {
     unsafe {
-        // Create a new epoll instance.
-        let epoll_fd = epoll_create1(O_CLOEXEC /* thread-safe */);
-        error(epoll_fd).unwrap();
-        EPOLL_FD = mem::MaybeUninit::new(epoll_fd);
-        // Open a pipe.
-        let mut pipe = mem::MaybeUninit::<[raw::c_int; 2]>::uninit();
-        error(pipe2(pipe.as_mut_ptr(), 0 /* no flags */)).unwrap();
-        let [read_fd, write_fd] = pipe.assume_init();
-        WRITE_FD = mem::MaybeUninit::new(write_fd);
-        // Add read pipe to epoll instance.
-        let pipe_listener = Listener::init(epoll_fd, read_fd, false);
-        // Make PAIR
-        PAIR = mem::MaybeUninit::new((sync::Mutex::new(false), sync::Condvar::new()));
+        &mut *SHARED_CONTEXT.0.as_mut_ptr()
+    }
+}
 
-        // Spawn and detach the thread.
-        thread::spawn(move || {
-            // Run until pipe creates an interrupt.
-            loop {
-                let mut ev = mem::MaybeUninit::<EpollEvent>::uninit();
-                // Wait for something to happen.
-                if epoll_wait(
-                    epoll_fd,
-                    ev.as_mut_ptr(),
-                    1,  /* Get one event at a time */
-                    -1, /* wait indefinitely */
-                ) < 0
-                {
-                    // Ignore error
-                    continue;
-                }
-                let ptr: *mut raw::c_void = ev.assume_init().data.ptr;
-                if ptr.is_null() {
-                    let mut buffer = mem::MaybeUninit::<[u8; 1]>::uninit();
-                    let len = read(read_fd, buffer.as_mut_ptr().cast(), 1);
-                    let ret = buffer.assume_init()[0];
-                    assert_eq!(len, 1);
-                    match ret {
-                        0 => {
-                            let (lock, cvar) = &(*PAIR.as_ptr());
-                            let mut started = lock.lock().unwrap();
-                            *started = true;
-                            // We notify the condvar that the value has changed.
-                            cvar.notify_one();
-                            break;
-                        }
-                        1 => {
-                            let mut buffer =
-                                mem::MaybeUninit::<[u8; mem::size_of::<usize>()]>::uninit();
-                            let len =
-                                read(read_fd, buffer.as_mut_ptr().cast(), mem::size_of::<usize>());
-                            let ret = buffer.assume_init();
-                            assert_eq!(len as usize, mem::size_of::<usize>());
-                            let _ = Box::<Ptr>::from_raw(mem::transmute(ret));
-                        }
-                        _ => unreachable!(),
-                    }
-                }
-                let ptr: *mut Ptr = ptr.cast();
-                // Wake waiting thread if it's waiting.
-                if let Some(waker) = (*ptr).take() {
-                    waker.wake();
-                }
-            }
-            // Free up resources
-            pipe_listener.free();
-            free(epoll_fd);
-            // Don't try to free a null box.
-            mem::forget(pipe_listener);
+struct Context {
+    // Variables for figuring out the next id
+    next: DeviceID,
+    garbage: Vec<DeviceID>,
+    // Send side of the pipe.
+    sender: raw::c_int,
+}
+
+impl Context {
+    // Initialize context.
+    pub fn new(sender: raw::c_int) -> Self {
+        Context {
+            next: DeviceID(1),
+            garbage: Vec::new(),
+            sender,
+        }
+    }
+
+    // Create an ID
+    pub fn create_id(&mut self) -> DeviceID {
+        if let Some(id) = self.garbage.pop() {
+            id
+        } else {
+            let ret = DeviceID(self.next.0);
+            self.next.0 += 1;
+            ret
+        }
+    }
+
+    // Delete an ID, so it can be re-used.
+    pub fn delete_id(&mut self, device_id: DeviceID) {
+        if device_id.0 == self.next.0 - 1 {
+            self.next.0 -= 1;
+        } else {
+            self.garbage.push(device_id);
+        }
+    }
+}
+
+struct SharedContext(MaybeUninit<Mutex<Context>>);
+
+impl SharedContext {
+    const fn new() -> Self {
+        SharedContext(MaybeUninit::uninit())
+    }
+
+    fn init(&mut self, context: Mutex<Context>) {
+        self.0 = MaybeUninit::new(context);
+    }
+}
+
+/// Represents some device.
+pub struct Device {
+    // File descriptor to be registered with epoll
+    fd: raw::c_int,
+    // Software ID for identifying this device.
+    device_id: DeviceID,
+}
+
+impl Device {
+    /// Start checking for events on a new device from a linux file descriptor.
+    pub fn new(fd: raw::c_int) -> Self {
+        // Start thread if it wasn't running before.
+        INIT.call_once(|| {
+            // Create pipe for communication
+            let mut pipe = MaybeUninit::<[raw::c_int; 2]>::uninit();
+            error(unsafe { pipe2(pipe.as_mut_ptr(), O_CLOEXEC) }).unwrap();
+            let [recver, sender] = unsafe { pipe.assume_init() };
+            // Initialize shared context.
+            unsafe { SHARED_CONTEXT.init(Mutex::new(Context::new(sender))) }
+            // Start hardware thread
+            let _join = thread::spawn(move || hardware_thread(recver));
         });
-    }
-}
+        // Get a new device ID
+        let mut context = context().lock().unwrap();
+        let device_id = context.create_id();
+        let write_fd = context.sender;
+        let message = Message::Device(DeviceID(device_id.0), fd);
 
-/// Safely get `(epoll_fd, write_fd)`
-#[inline(always)]
-fn get_fds() -> (raw::c_int, raw::c_int) {
-    // Make sure that epoll thread has already started.  This way, we know that
-    // the file descriptors have been initialized.
-    INIT.call_once(start);
-    // This access is safe without a mutex because the file descriptors don't
-    // change after initialization.
-    unsafe { (EPOLL_FD.assume_init(), WRITE_FD.assume_init()) }
-}
-
-/// A listener on a file descriptor.
-pub struct Listener {
-    fd: raw::c_int, // File descriptor for this
-    a: *mut Ptr,
-    b: *mut Ptr,
-}
-
-unsafe impl Send for Listener {}
-
-impl Listener {
-    /// Create a new Listener (start listening on file descriptor).
-    pub fn new(fd: raw::c_int) -> Listener {
-        // Get the epoll file descriptor.
-        let (epoll_fd, _) = get_fds();
-        // Create the listener
-        unsafe { Self::init(epoll_fd, fd, true) }
-    }
-
-    unsafe fn init(epoll_fd: raw::c_int, fd: raw::c_int, is: bool) -> Listener {
-        // Check for input and output
-        let events = EPOLLIN | EPOLLOUT;
-        // Build two EpollEvent structures to switch between.
-        let box_a: *mut Ptr = if is {
-            Box::into_raw(Box::new(None))
-        } else {
-            ptr::null_mut()
-        };
-        let box_b: *mut Ptr = if is {
-            Box::into_raw(Box::new(None))
-        } else {
-            ptr::null_mut()
-        };
-        // This C FFI call is safe because, according to the epoll
-        // documentation, adding is safe while another thread is waiting on
-        // epoll, the mutable reference to EpollEvent isn't used after the call,
-        // and the box lifetime is handled properly by this struct.
-        // Shouldn't fail
-        error(epoll_ctl(
-            epoll_fd,
-            EPOLL_CTL_ADD,
-            fd,
-            &mut EpollEvent {
-                events,
-                data: EpollData { ptr: box_a.cast() },
-            },
-        ))
-        .unwrap();
-        // Construct the listener.
-        Listener {
-            fd,
-            a: box_a,
-            b: box_b,
-        }
-    }
-
-    /// Attach a waker to this Listener.  Do this before checking for new data.
-    pub fn wake_on_event(&mut self, waker: task::Waker) {
-        // Get the epoll file descriptor.
-        let (epoll_fd, _) = get_fds();
-        // This C FFI call is safe because, according to the epoll
-        // documentation, modifying is safe while another thread is waiting on
-        // epoll, and the mutable reference to EpollEvent isn't used after the
-        // call.
+        // Send message to register this device.
         unsafe {
-            // Move waker into new box.
-            *self.b = Some(waker);
-            // Transmute copy box, don't run constructor twice.
-            let data: *mut EpollEvent = mem::transmute_copy(&self.b);
-            // Shouldn't fail
-            error(epoll_ctl(epoll_fd, EPOLL_CTL_MOD, self.fd, data)).unwrap();
-        };
-        // Swap the two boxes so different memory is used next time.
-        mem::swap(&mut self.b, &mut self.a);
-    }
-
-    /// Exit the thread.
-    pub fn exit(&self) {
-        // Get the epoll file descriptor.
-        let (_, write_fd) = get_fds();
-        // Tell the loop to stop waiting, so that it actually exits.
-        if unsafe { write(write_fd, [0u8].as_ptr().cast(), 1) } != 1 {
-            panic!("Writing to the pipe failed, should never happen!");
-        }
-        // Wait until thread has finished exiting.
-        {
-            let (lock, cvar) = unsafe { &(*PAIR.as_ptr()) };
-            let mut started = lock.lock().unwrap();
-            while !*started {
-                started = cvar.wait(started).unwrap();
-            }
-        }
-        // Free Pair
-        unsafe {
-            let _ = ptr::read(PAIR.as_ptr());
-        }
-
-        // Set free'd to true: thread has finished.
-        FREED.store(true, atomic::Ordering::SeqCst);
-    }
-
-    unsafe fn free(&self) {
-        // Get the epoll file descriptor.
-        let (epoll_fd, _) = get_fds();
-        // This C FFI call is safe because, according to the epoll
-        // documentation, deleting is safe while another thread is waiting on
-        // epoll, and the mutable reference to EpollEvent isn't used after the
-        // call.  It's also necessary to guarentee the Box<Ptr> isn't used after
-        // free.
-        // Shouldn't fail - EpollEvent is unused, but can't be null
-        error(epoll_ctl(
-            epoll_fd,
-            EPOLL_CTL_DEL,
-            self.fd,
-            &mut EpollEvent {
-                events: EPOLLIN | EPOLLOUT,
-                data: EpollData {
-                    ptr: ptr::null_mut(),
-                },
-            },
-        ))
-        .unwrap();
-    }
-}
-
-impl Drop for Listener {
-    fn drop(&mut self) {
-        unsafe {
-            // Free box_b
-            let _ = { Box::<Ptr>::from_raw(self.b) };
-            // If epoll instance is already freed, no point in deregistering.
-            if !FREED.load(atomic::Ordering::SeqCst) {
-                // Unregister listener
-                self.free();
-            }
-            // Get the epoll file descriptor.
-            let (_, write_fd) = get_fds();
-            //
-            let mut fail = false;
-            // Send message to free box_a, since it might stil be used
-            let pointer: [u8; mem::size_of::<usize>()] = mem::transmute(self.a);
-            if write(write_fd, [1u8].as_ptr().cast(), 1) != 1 {
-                fail = true;
-            }
-            if write(write_fd, pointer.as_ptr().cast(), mem::size_of::<usize>())
-                != mem::size_of::<usize>() as isize
+            if write(write_fd, [message].as_ptr().cast(), mem::size_of::<Message>()) as usize
+                != mem::size_of::<Message>()
             {
-                fail = true;
-            }
-            // If epoll thread has already finished, free on this thread.
-            if fail || FREED.load(atomic::Ordering::SeqCst) {
-                let _ = Box::<Ptr>::from_raw(self.a);
+               panic!("Failed write to pipe");
             }
         }
+
+        // Return the device
+        Device { fd, device_id }
+    }
+
+    /// Register a waker to wake when the device gets an event.
+    pub fn register_waker(&self, waker: Waker) {
+        let context = context().lock().unwrap();
+        let write_fd = context.sender;
+        let message = Message::Waker(DeviceID(self.device_id.0), waker);
+        unsafe {
+            if write(write_fd, [message].as_ptr().cast(), mem::size_of::<Message>()) as usize
+                != mem::size_of::<Message>()
+            {
+               panic!("Failed write to pipe");
+            }
+        }
+    }
+
+    /// Convenience function to get the raw File Descriptor of the Device.
+    pub fn fd(&self) -> raw::c_int {
+        self.fd
+    }
+}
+
+impl Drop for Device {
+    fn drop(&mut self) {
+        let mut context = context().lock().unwrap();
+        let write_fd = context.sender;
+        let message = Message::Disconnect(self.fd);
+        // Unregister ID
+        unsafe {
+            if write(write_fd, [message].as_ptr().cast(), mem::size_of::<Message>()) as usize
+                != mem::size_of::<Message>()
+            {
+               panic!("Failed write to pipe");
+            }
+        }
+        // Free ID to be able to be used again.
+        context.delete_id(DeviceID(self.device_id.0));
     }
 }

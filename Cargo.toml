@@ -7,7 +7,7 @@ edition = "2018"
 license = "MIT OR BSL-1.0"
 description = """
 Start a thread to wake an async executor when the OS's I/O event notifier
-gathers that the hardware is ready.
+discovers that the hardware is ready.
 """
 documentation = "https://docs.rs/smelling-salts"
 homepage = "https://github.com/LordAldaron/smelling-salts/blob/master/changelog.md"
@@ -21,3 +21,6 @@ travis-ci = { repository = "LordAldaron/smelling-salts" }
 maintenance = { status = "actively-developed" }
 
 [dependencies]
+
+[dev-dependencies]
+pasts = "0.0.1"
