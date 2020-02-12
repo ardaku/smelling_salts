@@ -4,7 +4,7 @@
 use std::os::raw;
 use std::task::Waker;
 use std::thread;
-use std::sync::{Arc, Mutex, Condvar};
+use std::sync::{Mutex, Condvar};
 use std::mem::MaybeUninit;
 use std::sync::Once;
 use std::convert::TryInto;
@@ -73,7 +73,7 @@ enum Message {
     /// There's a new waker for a device.
     Waker(DeviceID, Waker),
     /// Disconnect a device.
-    Disconnect(raw::c_int, Arc<(Mutex<bool>, Condvar)>),
+    Disconnect(raw::c_int, *const (Mutex<bool>, Condvar)),
 }
 
 // This function checks for hardware events using epoll_wait (blocking I/O) in
@@ -314,9 +314,8 @@ impl Drop for Device {
     fn drop(&mut self) {
         let mut context = context().lock().unwrap();
         let write_fd = context.sender;
-        let pair = Arc::new((Mutex::new(false), Condvar::new()));
-        let pair2 = pair.clone();
-        let message = [Message::Disconnect(self.fd, pair2)];
+        let pair = Box::pin((Mutex::new(false), Condvar::new()));
+        let message = [Message::Disconnect(self.fd, &*pair)];
         // Unregister ID
         unsafe {
             if write(write_fd, message.as_ptr().cast(), mem::size_of::<Message>()) as usize
