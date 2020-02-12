@@ -20,13 +20,11 @@ const O_CLOEXEC: raw::c_int = 0o2000000;
 const O_NONBLOCK: raw::c_int = 0o0004000;
 const O_DIRECT: raw::c_int = 0o0040000;
 
-    extern "C" {
+extern "C" {
     fn pipe2(pipefd: *mut [raw::c_int; 2], flags: raw::c_int) -> raw::c_int;
     fn write(fd: raw::c_int, buf: *const raw::c_void, count: c_size) -> c_ssize;
     fn read(fd: raw::c_int, buf: *mut raw::c_void, count: c_size) -> c_ssize;
-    #[cfg_attr(target_os = "linux",
-           link_name = "__errno_location")]
-    fn errno_location() -> *mut raw::c_int;
+    fn close(fd: raw::c_int) -> raw::c_int;
 }
 
 // Convert a C error (negative on error) into a result.
@@ -36,6 +34,12 @@ fn error(err: raw::c_int) -> Result<(), raw::c_int> {
     } else {
         Ok(())
     }
+}
+
+fn fd_close(fd: raw::c_int) {
+    // close() should never fail.
+    let ret = unsafe { close(fd) };
+    error(ret).unwrap();
 }
 
 // Create the sender and receiver for a pipe.
@@ -51,8 +55,9 @@ fn new_pipe() -> (raw::c_int, raw::c_int) {
 }
 
 fn write_u32(fd: raw::c_int, data: u32) {
+    let data = [data];
     let len: usize = unsafe {
-        write(fd, [data].as_ptr().cast(), mem::size_of::<u32>()).try_into().unwrap()
+        write(fd, data.as_ptr().cast(), mem::size_of::<u32>()).try_into().unwrap()
     };
     assert_eq!(len, mem::size_of::<u32>());
 }
@@ -60,14 +65,7 @@ fn write_u32(fd: raw::c_int, data: u32) {
 fn read_u32(fd: raw::c_int) -> Option<u32> {
     let ret = unsafe {
         let mut buffer = mem::MaybeUninit::<u32>::uninit();
-        let len: usize = read(fd, buffer.as_mut_ptr().cast(), mem::size_of::<u32>()).try_into().unwrap_or_else(|_error| {
-            let errno = *errno_location();
-            if errno == 11 {
-                0
-            } else {
-                panic!("errno {}")
-            }
-        });
+        let len: usize = read(fd, buffer.as_mut_ptr().cast(), mem::size_of::<u32>()).try_into().unwrap_or(0);
         if len == 0 {
             return None;
         }
@@ -114,10 +112,13 @@ async fn async_main() {
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(1000));
         write_u32(sender, MAGIC_NUMBER);
+        fd_close(sender);
     });
 
     let output = PipeFuture::new(&device).await;
     assert_eq!(output, MAGIC_NUMBER);
+    mem::drop(device);
+    fd_close(recver);
 }
 
 fn main() {

@@ -4,7 +4,7 @@
 use std::os::raw;
 use std::task::Waker;
 use std::thread;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, Condvar};
 use std::mem::MaybeUninit;
 use std::sync::Once;
 use std::convert::TryInto;
@@ -73,7 +73,7 @@ enum Message {
     /// There's a new waker for a device.
     Waker(DeviceID, Waker),
     /// Disconnect a device.
-    Disconnect(raw::c_int),
+    Disconnect(raw::c_int, Arc<(Mutex<bool>, Condvar)>),
 }
 
 // This function checks for hardware events using epoll_wait (blocking I/O) in
@@ -146,7 +146,7 @@ fn hardware_thread(recver: raw::c_int) {
                     // Place waker into wakers Vec
                     wakers[index - 1] = Some(waker);
                 },
-                Message::Disconnect(device_fd) => unsafe {
+                Message::Disconnect(device_fd, pair) => unsafe {
                     // Unregister from epoll
                     error(epoll_ctl(
                         epoll_fd,
@@ -158,6 +158,11 @@ fn hardware_thread(recver: raw::c_int) {
                         },
                     ))
                     .unwrap();
+                    // Let the device thread know we're done.
+                    let (lock, cvar) = &*pair;
+                    let mut started = lock.lock().unwrap();
+                    *started = true;
+                    cvar.notify_one();
                 },
             }
             continue;
@@ -270,11 +275,11 @@ impl Device {
         let mut context = context().lock().unwrap();
         let device_id = context.create_id();
         let write_fd = context.sender;
-        let message = Message::Device(DeviceID(device_id.0), fd);
+        let message = [Message::Device(DeviceID(device_id.0), fd)];
 
         // Send message to register this device.
         unsafe {
-            if write(write_fd, [message].as_ptr().cast(), mem::size_of::<Message>()) as usize
+            if write(write_fd, message.as_ptr().cast(), mem::size_of::<Message>()) as usize
                 != mem::size_of::<Message>()
             {
                panic!("Failed write to pipe");
@@ -289,9 +294,9 @@ impl Device {
     pub fn register_waker(&self, waker: Waker) {
         let context = context().lock().unwrap();
         let write_fd = context.sender;
-        let message = Message::Waker(DeviceID(self.device_id.0), waker);
+        let message = [Message::Waker(DeviceID(self.device_id.0), waker)];
         unsafe {
-            if write(write_fd, [message].as_ptr().cast(), mem::size_of::<Message>()) as usize
+            if write(write_fd, message.as_ptr().cast(), mem::size_of::<Message>()) as usize
                 != mem::size_of::<Message>()
             {
                panic!("Failed write to pipe");
@@ -309,10 +314,12 @@ impl Drop for Device {
     fn drop(&mut self) {
         let mut context = context().lock().unwrap();
         let write_fd = context.sender;
-        let message = Message::Disconnect(self.fd);
+        let pair = Arc::new((Mutex::new(false), Condvar::new()));
+        let pair2 = pair.clone();
+        let message = [Message::Disconnect(self.fd, pair2)];
         // Unregister ID
         unsafe {
-            if write(write_fd, [message].as_ptr().cast(), mem::size_of::<Message>()) as usize
+            if write(write_fd, message.as_ptr().cast(), mem::size_of::<Message>()) as usize
                 != mem::size_of::<Message>()
             {
                panic!("Failed write to pipe");
@@ -320,5 +327,11 @@ impl Drop for Device {
         }
         // Free ID to be able to be used again.
         context.delete_id(DeviceID(self.device_id.0));
+        // Wait for the deregister to complete.
+        let (lock, cvar) = &*pair;
+        let mut started = lock.lock().unwrap();
+        while !*started {
+            started = cvar.wait(started).unwrap();
+        }
     }
 }
