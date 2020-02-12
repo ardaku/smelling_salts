@@ -255,6 +255,8 @@ pub struct Device {
     fd: raw::c_int,
     // Software ID for identifying this device.
     device_id: DeviceID,
+    // 
+    old: bool,
 }
 
 impl Device {
@@ -286,8 +288,11 @@ impl Device {
             }
         }
 
+        // Deconstructor hasn't run yet.
+        let old = false;
+
         // Return the device
-        Device { fd, device_id }
+        Device { fd, device_id, old }
     }
 
     /// Register a waker to wake when the device gets an event.
@@ -308,10 +313,16 @@ impl Device {
     pub fn fd(&self) -> raw::c_int {
         self.fd
     }
-}
 
-impl Drop for Device {
-    fn drop(&mut self) {
+    /// Stop checking for events on a device from a linux file descriptor.
+    pub fn old(&mut self) {
+        // Make sure that this deconstructor hasn't already run.
+        if self.old {
+            return
+        }
+        self.old = true;
+
+        //
         let mut context = context().lock().unwrap();
         let write_fd = context.sender;
         let pair = Box::pin((Mutex::new(false), Condvar::new()));
@@ -332,5 +343,11 @@ impl Drop for Device {
         while !*started {
             started = cvar.wait(started).unwrap();
         }
+    }
+}
+
+impl Drop for Device {
+    fn drop(&mut self) {
+        self.old();
     }
 }

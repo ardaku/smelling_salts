@@ -1,3 +1,5 @@
+//! This example 
+
 use pasts;
 use smelling_salts::Device;
 
@@ -83,6 +85,14 @@ impl PipeReceiver {
     }
 }
 
+impl Drop for PipeReceiver {
+    fn drop(&mut self) {
+        // Deregister FD, then delete (must be in this order).
+        self.0.old();
+        fd_close(self.0.fd());
+    }
+}
+
 pub struct PipeFuture<'a>(&'a PipeReceiver);
 
 impl<'a> PipeFuture<'a> {
@@ -117,8 +127,6 @@ async fn async_main() {
 
     let output = PipeFuture::new(&device).await;
     assert_eq!(output, MAGIC_NUMBER);
-    mem::drop(device);
-    fd_close(recver);
 }
 
 fn main() {
