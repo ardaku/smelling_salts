@@ -11,11 +11,10 @@ use std::convert::TryInto;
 use std::mem;
 
 const EPOLLIN: u32 = 0x001;
-// const EPOLLOUT: u32 = 0x004;
+const EPOLLOUT: u32 = 0x004;
 
 const EPOLL_CTL_ADD: i32 = 1;
 const EPOLL_CTL_DEL: i32 = 2;
-// const EPOLL_CTL_MOD: i32 = 3;
 
 const O_CLOEXEC: raw::c_int = 0x0008_0000;
 
@@ -69,7 +68,7 @@ struct DeviceID(u64);
 /// A message sent from a thread to the hardware thread.
 enum Message {
     /// Add device (ID, FD).
-    Device(DeviceID, raw::c_int),
+    Device(DeviceID, raw::c_int, Direction),
     /// There's a new waker for a device.
     Waker(DeviceID, Waker),
     /// Disconnect a device.
@@ -125,7 +124,7 @@ fn hardware_thread(recver: raw::c_int) {
             let message = unsafe { buffer.assume_init() };
             assert_eq!(len as usize, mem::size_of::<Message>());
             match message {
-                Message::Device(device_id, device_fd) => {
+                Message::Device(device_id, device_fd, direction) => {
                     let index: usize = device_id.0.try_into().unwrap();
                     // Resize wakers Vec
                     wakers.resize(wakers.len().max(index), None);
@@ -135,7 +134,10 @@ fn hardware_thread(recver: raw::c_int) {
                         EPOLL_CTL_ADD,
                         device_fd,
                         &mut EpollEvent {
-                            events: EPOLLIN /* available for read operations */,
+                            events: match direction {
+                                Direction::Read => EPOLLIN,
+                                Direction::Write => EPOLLOUT,
+                            },
                             data: EpollData { uint64: device_id.0 }, 
                         },
                     ))
@@ -249,19 +251,27 @@ impl SharedContext {
     }
 }
 
+/// Communication direction with the Device.
+pub enum Direction {
+    /// Writing data to the Device (Wake when device ready to receive data).
+    Write,
+    /// Reading data from the Device (Wake when device sends data).
+    Read,
+}
+
 /// Represents some device.
 pub struct Device {
-    // File descriptor to be registered with epoll
+    // File descriptor to be registered with epoll.
     fd: raw::c_int,
     // Software ID for identifying this device.
     device_id: DeviceID,
-    // 
+    // True if old() deconstructor has already been called.
     old: bool,
 }
 
 impl Device {
     /// Start checking for events on a new device from a linux file descriptor.
-    pub fn new(fd: raw::c_int) -> Self {
+    pub fn new(fd: raw::c_int, dir: Direction) -> Self {
         // Start thread if it wasn't running before.
         INIT.call_once(|| {
             // Create pipe for communication
@@ -277,7 +287,7 @@ impl Device {
         let mut context = context().lock().unwrap();
         let device_id = context.create_id();
         let write_fd = context.sender;
-        let message = [Message::Device(DeviceID(device_id.0), fd)];
+        let message = [Message::Device(DeviceID(device_id.0), fd, dir)];
 
         // Send message to register this device.
         unsafe {
@@ -297,6 +307,7 @@ impl Device {
 
     /// Register a waker to wake when the device gets an event.
     pub fn register_waker(&self, waker: Waker) {
+        assert_eq!(self.old, false);
         let context = context().lock().unwrap();
         let write_fd = context.sender;
         let message = [Message::Waker(DeviceID(self.device_id.0), waker)];
