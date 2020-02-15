@@ -12,7 +12,7 @@ use std::mem;
 
 const EPOLLIN: u32 = 0x_001;
 const EPOLLOUT: u32 = 0x_004;
-const EPOLLET: u32 = 0; //  1 << 31;
+const EPOLLET: u32 = 1 << 31;
 
 const EPOLL_CTL_ADD: i32 = 1;
 const EPOLL_CTL_DEL: i32 = 2;
