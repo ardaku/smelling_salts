@@ -10,8 +10,9 @@ use std::sync::Once;
 use std::convert::TryInto;
 use std::mem;
 
-const EPOLLIN: u32 = 0x001;
-const EPOLLOUT: u32 = 0x004;
+const EPOLLIN: u32 = 0x_001;
+const EPOLLOUT: u32 = 0x_004;
+const EPOLLET: u32 = 0; //  1 << 31;
 
 const EPOLL_CTL_ADD: i32 = 1;
 const EPOLL_CTL_DEL: i32 = 2;
@@ -134,7 +135,7 @@ fn hardware_thread(recver: raw::c_int) {
                         EPOLL_CTL_ADD,
                         device_fd,
                         &mut EpollEvent {
-                            events: match direction {
+                            events: EPOLLET | match direction {
                                 Direction::Read => EPOLLIN,
                                 Direction::Write => EPOLLOUT,
                             },
@@ -155,7 +156,7 @@ fn hardware_thread(recver: raw::c_int) {
                         EPOLL_CTL_DEL,
                         device_fd,
                         &mut EpollEvent { /* ignored, can't be null, though */
-                            events: EPOLLIN /* available for read operations */,
+                            events: 0,
                             data: EpollData { uint64: 0 }, 
                         },
                     ))
