@@ -134,8 +134,6 @@ fn hardware_thread(recver: raw::c_int) {
         // Wait
         let mut ev = MaybeUninit::<EpollEvent>::uninit();
 
-        println!("Waiting…");
-
         // Wait for something to happen.
         if unsafe { epoll_wait(
             epoll_fd,
@@ -144,13 +142,10 @@ fn hardware_thread(recver: raw::c_int) {
             -1, /* wait indefinitely */
         ) } < 0
         {
-            println!("ERROR!!!");
             // Ignore error
             continue;
         }
         let index = DeviceID(unsafe { ev.assume_init().data.uint64 });
-
-        println!("SUCCESS: Waking {}!!!", index.0);
 
         // Check epoll event for which hardware (or recv).
         if index.0 == 0 { // Pipe
@@ -159,7 +154,6 @@ fn hardware_thread(recver: raw::c_int) {
                 mem::size_of::<Message>()) };
             let message = unsafe { buffer.assume_init() };
             assert_eq!(len as usize, mem::size_of::<Message>());
-            dbg!(&message);
             match message {
                 Message::Device(device_id, device_fd, events) => {
                     let index: usize = device_id.0.try_into().unwrap();
@@ -208,8 +202,6 @@ fn hardware_thread(recver: raw::c_int) {
         let id: usize = index.0.try_into().unwrap();
         if let Some(waker) = wakers[id - 1].take() {
             waker.wake();
-        } else {
-            println!("MESSISNS");
         }
     }
 }
