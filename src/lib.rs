@@ -10,9 +10,36 @@ use std::sync::Once;
 use std::convert::TryInto;
 use std::mem;
 
+/// Which events to watch for to trigger a wake-up.
+#[derive(Debug)]
+pub struct Watcher(u32);
+
+impl Watcher {
+    /// Create empty Watcher (requesting nothing)
+    pub fn new() -> Watcher {
+        Watcher(0)
+    }
+
+    /// Create Watcher from raw bitmask
+    pub unsafe fn from_raw(raw: u32) -> Watcher {
+        Watcher(raw)
+    }
+
+    /// Watch for input from device.
+    pub fn input(mut self) -> Self {
+        self.0 |= EPOLLIN;
+        self
+    }
+
+    /// Watch for device to be ready for output.
+    pub fn output(mut self) -> Self {
+        self.0 |= EPOLLOUT;
+        self
+    }
+}
+
 const EPOLLIN: u32 = 0x_001;
 const EPOLLOUT: u32 = 0x_004;
-const EPOLLET: u32 = 1 << 31;
 
 const EPOLL_CTL_ADD: i32 = 1;
 const EPOLL_CTL_DEL: i32 = 2;
@@ -64,12 +91,14 @@ extern "C" {
 static INIT: Once = Once::new();
 static mut SHARED_CONTEXT: SharedContext = SharedContext::new();
 
+#[derive(Debug)]
 struct DeviceID(u64);
 
 /// A message sent from a thread to the hardware thread.
+#[derive(Debug)]
 enum Message {
     /// Add device (ID, FD).
-    Device(DeviceID, raw::c_int, Direction),
+    Device(DeviceID, raw::c_int, Watcher),
     /// There's a new waker for a device.
     Waker(DeviceID, Waker),
     /// Disconnect a device.
@@ -104,6 +133,9 @@ fn hardware_thread(recver: raw::c_int) {
     loop {
         // Wait
         let mut ev = MaybeUninit::<EpollEvent>::uninit();
+
+        println!("Waiting…");
+
         // Wait for something to happen.
         if unsafe { epoll_wait(
             epoll_fd,
@@ -112,10 +144,13 @@ fn hardware_thread(recver: raw::c_int) {
             -1, /* wait indefinitely */
         ) } < 0
         {
+            println!("ERROR!!!");
             // Ignore error
             continue;
         }
         let index = DeviceID(unsafe { ev.assume_init().data.uint64 });
+
+        println!("SUCCESS: Waking {}!!!", index.0);
 
         // Check epoll event for which hardware (or recv).
         if index.0 == 0 { // Pipe
@@ -124,8 +159,9 @@ fn hardware_thread(recver: raw::c_int) {
                 mem::size_of::<Message>()) };
             let message = unsafe { buffer.assume_init() };
             assert_eq!(len as usize, mem::size_of::<Message>());
+            dbg!(&message);
             match message {
-                Message::Device(device_id, device_fd, direction) => {
+                Message::Device(device_id, device_fd, events) => {
                     let index: usize = device_id.0.try_into().unwrap();
                     // Resize wakers Vec
                     wakers.resize(wakers.len().max(index), None);
@@ -135,10 +171,7 @@ fn hardware_thread(recver: raw::c_int) {
                         EPOLL_CTL_ADD,
                         device_fd,
                         &mut EpollEvent {
-                            events: EPOLLET | match direction {
-                                Direction::Read => EPOLLIN,
-                                Direction::Write => EPOLLOUT,
-                            },
+                            events: events.0,
                             data: EpollData { uint64: device_id.0 }, 
                         },
                     ))
@@ -175,6 +208,8 @@ fn hardware_thread(recver: raw::c_int) {
         let id: usize = index.0.try_into().unwrap();
         if let Some(waker) = wakers[id - 1].take() {
             waker.wake();
+        } else {
+            println!("MESSISNS");
         }
     }
 }
@@ -252,14 +287,6 @@ impl SharedContext {
     }
 }
 
-/// Communication direction with the Device.
-pub enum Direction {
-    /// Writing data to the Device (Wake when device ready to receive data).
-    Write,
-    /// Reading data from the Device (Wake when device sends data).
-    Read,
-}
-
 /// Represents some device.
 pub struct Device {
     // File descriptor to be registered with epoll.
@@ -272,7 +299,7 @@ pub struct Device {
 
 impl Device {
     /// Start checking for events on a new device from a linux file descriptor.
-    pub fn new(fd: raw::c_int, dir: Direction) -> Self {
+    pub fn new(fd: raw::c_int, events: Watcher) -> Self {
         // Start thread if it wasn't running before.
         INIT.call_once(|| {
             // Create pipe for communication
@@ -288,7 +315,7 @@ impl Device {
         let mut context = context().lock().unwrap();
         let device_id = context.create_id();
         let write_fd = context.sender;
-        let message = [Message::Device(DeviceID(device_id.0), fd, dir)];
+        let message = [Message::Device(DeviceID(device_id.0), fd, events)];
 
         // Send message to register this device.
         unsafe {
