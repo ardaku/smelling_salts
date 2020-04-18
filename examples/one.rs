@@ -1,7 +1,7 @@
 //! This example 
 
 use pasts;
-use smelling_salts::{Device, Direction};
+use smelling_salts::{Device, Watcher};
 
 use std::os::raw;
 use std::future::Future;
@@ -81,7 +81,7 @@ pub struct PipeReceiver(Device);
 
 impl PipeReceiver {
     pub fn new(fd: raw::c_int) -> Self {
-        PipeReceiver(Device::new(fd, Direction::Read))
+        PipeReceiver(Device::new(fd, Watcher::new().input()))
     }
 }
 
