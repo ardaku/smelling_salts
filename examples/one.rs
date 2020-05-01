@@ -1,14 +1,14 @@
-//! This example 
+//! This example
 
 use pasts;
 use smelling_salts::{Device, Watcher};
 
-use std::os::raw;
-use std::future::Future;
-use std::task::{Context, Poll};
-use std::pin::Pin;
-use std::mem;
 use std::convert::TryInto;
+use std::future::Future;
+use std::mem;
+use std::os::raw;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
 #[allow(non_camel_case_types)]
 type c_ssize = isize; // True for most unix
@@ -59,7 +59,9 @@ fn new_pipe() -> (raw::c_int, raw::c_int) {
 fn write_u32(fd: raw::c_int, data: u32) {
     let data = [data];
     let len: usize = unsafe {
-        write(fd, data.as_ptr().cast(), mem::size_of::<u32>()).try_into().unwrap()
+        write(fd, data.as_ptr().cast(), mem::size_of::<u32>())
+            .try_into()
+            .unwrap()
     };
     assert_eq!(len, mem::size_of::<u32>());
 }
@@ -67,7 +69,9 @@ fn write_u32(fd: raw::c_int, data: u32) {
 fn read_u32(fd: raw::c_int) -> Option<u32> {
     let ret = unsafe {
         let mut buffer = mem::MaybeUninit::<u32>::uninit();
-        let len: usize = read(fd, buffer.as_mut_ptr().cast(), mem::size_of::<u32>()).try_into().unwrap_or(0);
+        let len: usize = read(fd, buffer.as_mut_ptr().cast(), mem::size_of::<u32>())
+            .try_into()
+            .unwrap_or(0);
         if len == 0 {
             return None;
         }

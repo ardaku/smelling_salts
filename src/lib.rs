@@ -1,14 +1,14 @@
 //! Start a thread to wake an async executor when the OS's I/O event notifier
 //! discovers that the hardware is ready.
 
-use std::os::raw;
-use std::task::Waker;
-use std::thread;
-use std::sync::{Mutex, Condvar};
-use std::mem::MaybeUninit;
-use std::sync::Once;
 use std::convert::TryInto;
 use std::mem;
+use std::mem::MaybeUninit;
+use std::os::raw;
+use std::sync::Once;
+use std::sync::{Condvar, Mutex};
+use std::task::Waker;
+use std::thread;
 
 /// Which events to watch for to trigger a wake-up.
 #[derive(Debug)]
@@ -123,7 +123,7 @@ fn hardware_thread(recver: raw::c_int) {
             EPOLL_CTL_ADD,
             recver,
             &mut EpollEvent {
-                events: EPOLLIN /* available for read operations */,
+                events: EPOLLIN,               /* available for read operations */
                 data: EpollData { uint64: 0 }, // Use reserved ID, 0 for pipe
             },
         ))
@@ -136,12 +136,14 @@ fn hardware_thread(recver: raw::c_int) {
         let mut ev = MaybeUninit::<EpollEvent>::uninit();
 
         // Wait for something to happen.
-        if unsafe { epoll_wait(
-            epoll_fd,
-            ev.as_mut_ptr(),
-            1,  /* Get one event at a time */
-            -1, /* wait indefinitely */
-        ) } < 0
+        if unsafe {
+            epoll_wait(
+                epoll_fd,
+                ev.as_mut_ptr(),
+                1,  /* Get one event at a time */
+                -1, /* wait indefinitely */
+            )
+        } < 0
         {
             // Ignore error
             continue;
@@ -149,10 +151,16 @@ fn hardware_thread(recver: raw::c_int) {
         let index = DeviceID(unsafe { ev.assume_init().data.uint64 });
 
         // Check epoll event for which hardware (or recv).
-        if index.0 == 0 { // Pipe
+        if index.0 == 0 {
+            // Pipe
             let mut buffer = mem::MaybeUninit::<Message>::uninit();
-            let len = unsafe { read(recver, buffer.as_mut_ptr().cast(),
-                mem::size_of::<Message>()) };
+            let len = unsafe {
+                read(
+                    recver,
+                    buffer.as_mut_ptr().cast(),
+                    mem::size_of::<Message>(),
+                )
+            };
             let message = unsafe { buffer.assume_init() };
             assert_eq!(len as usize, mem::size_of::<Message>());
             match message {
@@ -161,31 +169,36 @@ fn hardware_thread(recver: raw::c_int) {
                     // Resize wakers Vec
                     wakers.resize(wakers.len().max(index), None);
                     // Register into epoll
-                    unsafe { error(epoll_ctl(
-                        epoll_fd,
-                        EPOLL_CTL_ADD,
-                        device_fd,
-                        &mut EpollEvent {
-                            events: events.0,
-                            data: EpollData { uint64: device_id.0 }, 
-                        },
-                    ))
-                    .unwrap(); }
-                },
+                    unsafe {
+                        error(epoll_ctl(
+                            epoll_fd,
+                            EPOLL_CTL_ADD,
+                            device_fd,
+                            &mut EpollEvent {
+                                events: events.0,
+                                data: EpollData {
+                                    uint64: device_id.0,
+                                },
+                            },
+                        ))
+                        .unwrap();
+                    }
+                }
                 Message::Waker(device_id, waker) => {
                     let index: usize = device_id.0.try_into().unwrap();
                     // Place waker into wakers Vec
                     wakers[index - 1] = Some(waker);
-                },
+                }
                 Message::Disconnect(device_fd, pair) => unsafe {
                     // Unregister from epoll
                     error(epoll_ctl(
                         epoll_fd,
                         EPOLL_CTL_DEL,
                         device_fd,
-                        &mut EpollEvent { /* ignored, can't be null, though */
+                        &mut EpollEvent {
+                            /* ignored, can't be null, though */
                             events: 0,
-                            data: EpollData { uint64: 0 }, 
+                            data: EpollData { uint64: 0 },
                         },
                     ))
                     .unwrap();
@@ -224,9 +237,7 @@ fn error(err: raw::c_int) -> Result<(), raw::c_int> {
 }*/
 
 fn context() -> &'static mut Mutex<Context> {
-    unsafe {
-        &mut *SHARED_CONTEXT.0.as_mut_ptr()
-    }
+    unsafe { &mut *SHARED_CONTEXT.0.as_mut_ptr() }
 }
 
 struct Context {
@@ -315,7 +326,7 @@ impl Device {
             if write(write_fd, message.as_ptr().cast(), mem::size_of::<Message>()) as usize
                 != mem::size_of::<Message>()
             {
-               panic!("Failed write to pipe");
+                panic!("Failed write to pipe");
             }
         }
 
@@ -336,7 +347,7 @@ impl Device {
             if write(write_fd, message.as_ptr().cast(), mem::size_of::<Message>()) as usize
                 != mem::size_of::<Message>()
             {
-               panic!("Failed write to pipe");
+                panic!("Failed write to pipe");
             }
         }
     }
@@ -350,7 +361,7 @@ impl Device {
     pub fn old(&mut self) {
         // Make sure that this deconstructor hasn't already run.
         if self.old {
-            return
+            return;
         }
         self.old = true;
 
@@ -364,7 +375,7 @@ impl Device {
             if write(write_fd, message.as_ptr().cast(), mem::size_of::<Message>()) as usize
                 != mem::size_of::<Message>()
             {
-               panic!("Failed write to pipe");
+                panic!("Failed write to pipe");
             }
         }
         // Free ID to be able to be used again.
