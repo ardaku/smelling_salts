@@ -21,6 +21,10 @@ impl Watcher {
     }
 
     /// Create Watcher from raw bitmask
+    ///
+    /// # Safety
+    /// This function requires the correct usage of the bitflags from the epoll
+    /// C API.
     pub unsafe fn from_raw(raw: u32) -> Watcher {
         Watcher(EPOLLET | raw)
     }
@@ -35,6 +39,12 @@ impl Watcher {
     pub fn output(mut self) -> Self {
         self.0 |= EPOLLOUT;
         self
+    }
+}
+
+impl Default for Watcher {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -358,6 +368,7 @@ impl Device {
     }
 
     /// Stop checking for events on a device from a linux file descriptor.
+    #[allow(clippy::mutex_atomic)]
     pub fn old(&mut self) {
         // Make sure that this deconstructor hasn't already run.
         if self.old {
