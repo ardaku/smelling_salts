@@ -23,4 +23,4 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 
 [dev-dependencies]
-pasts = "0.0.1"
+pasts = { path = "../pasts" } # "0.0.1"

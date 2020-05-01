@@ -17,12 +17,12 @@ pub struct Watcher(u32);
 impl Watcher {
     /// Create empty Watcher (requesting nothing)
     pub fn new() -> Watcher {
-        Watcher(0)
+        Watcher(EPOLLET)
     }
 
     /// Create Watcher from raw bitmask
     pub unsafe fn from_raw(raw: u32) -> Watcher {
-        Watcher(raw)
+        Watcher(EPOLLET | raw)
     }
 
     /// Watch for input from device.
@@ -40,6 +40,7 @@ impl Watcher {
 
 const EPOLLIN: u32 = 0x_001;
 const EPOLLOUT: u32 = 0x_004;
+const EPOLLET: u32 = 1 << 31;
 
 const EPOLL_CTL_ADD: i32 = 1;
 const EPOLL_CTL_DEL: i32 = 2;
