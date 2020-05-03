@@ -9,6 +9,7 @@ use std::sync::Once;
 use std::sync::{Condvar, Mutex};
 use std::task::Waker;
 use std::thread;
+use std::os::unix::io::RawFd;
 
 /// Which events to watch for to trigger a wake-up.
 #[derive(Debug)]
@@ -61,7 +62,7 @@ const O_CLOEXEC: raw::c_int = 0x0008_0000;
 #[derive(Copy, Clone)]
 union EpollData {
     ptr: *mut raw::c_void,
-    fd: raw::c_int,
+    fd: RawFd,
     uint32: u32,
     uint64: u64,
 }
@@ -80,22 +81,22 @@ type c_size = usize; // True for most unix
 
 extern "C" {
     fn epoll_create1(flags: raw::c_int) -> raw::c_int;
-    // fn close(fd: raw::c_int) -> raw::c_int;
+    // fn close(fd: RawFd) -> raw::c_int;
     fn epoll_ctl(
-        epfd: raw::c_int,
+        epfd: RawFd,
         op: raw::c_int,
-        fd: raw::c_int,
+        fd: RawFd,
         event: *mut EpollEvent,
     ) -> raw::c_int;
     fn epoll_wait(
-        epfd: raw::c_int,
+        epfd: RawFd,
         events: *mut EpollEvent,
         maxevents: raw::c_int,
         timeout: raw::c_int,
     ) -> raw::c_int;
-    fn pipe2(pipefd: *mut [raw::c_int; 2], flags: raw::c_int) -> raw::c_int;
-    fn write(fd: raw::c_int, buf: *const raw::c_void, count: c_size) -> c_ssize;
-    fn read(fd: raw::c_int, buf: *mut raw::c_void, count: c_size) -> c_ssize;
+    fn pipe2(pipefd: *mut [RawFd; 2], flags: raw::c_int) -> raw::c_int;
+    fn write(fd: RawFd, buf: *const raw::c_void, count: c_size) -> c_ssize;
+    fn read(fd: RawFd, buf: *mut raw::c_void, count: c_size) -> c_ssize;
 }
 
 // Used to initialize the hardware thread.
@@ -109,16 +110,16 @@ struct DeviceID(u64);
 #[derive(Debug)]
 enum Message {
     /// Add device (ID, FD).
-    Device(DeviceID, raw::c_int, Watcher),
+    Device(DeviceID, RawFd, Watcher),
     /// There's a new waker for a device.
     Waker(DeviceID, Waker),
     /// Disconnect a device.
-    Disconnect(raw::c_int, *const (Mutex<bool>, Condvar)),
+    Disconnect(RawFd, *const (Mutex<bool>, Condvar)),
 }
 
 // This function checks for hardware events using epoll_wait (blocking I/O) in
 // a loop.
-fn hardware_thread(recver: raw::c_int) {
+fn hardware_thread(recver: RawFd) {
     // Wakers
     let mut wakers: Vec<Option<Waker>> = vec![None];
 
@@ -240,7 +241,7 @@ fn error(err: raw::c_int) -> Result<(), raw::c_int> {
 }
 
 // Free a file descriptor
-/*fn fd_close(fd: raw::c_int) {
+/*fn fd_close(fd: RawFd) {
     // close() should never fail.
     let ret = unsafe { close(fd) };
     error(ret).unwrap();
@@ -255,12 +256,12 @@ struct Context {
     next: DeviceID,
     garbage: Vec<DeviceID>,
     // Send side of the pipe.
-    sender: raw::c_int,
+    sender: RawFd,
 }
 
 impl Context {
     // Initialize context.
-    pub fn new(sender: raw::c_int) -> Self {
+    pub fn new(sender: RawFd) -> Self {
         Context {
             next: DeviceID(1),
             garbage: Vec::new(),
@@ -304,7 +305,7 @@ impl SharedContext {
 /// Represents some device.
 pub struct Device {
     // File descriptor to be registered with epoll.
-    fd: raw::c_int,
+    fd: RawFd,
     // Software ID for identifying this device.
     device_id: DeviceID,
     // True if old() deconstructor has already been called.
@@ -313,11 +314,11 @@ pub struct Device {
 
 impl Device {
     /// Start checking for events on a new device from a linux file descriptor.
-    pub fn new(fd: raw::c_int, events: Watcher) -> Self {
+    pub fn new(fd: RawFd, events: Watcher) -> Self {
         // Start thread if it wasn't running before.
         INIT.call_once(|| {
             // Create pipe for communication
-            let mut pipe = MaybeUninit::<[raw::c_int; 2]>::uninit();
+            let mut pipe = MaybeUninit::<[RawFd; 2]>::uninit();
             error(unsafe { pipe2(pipe.as_mut_ptr(), O_CLOEXEC) }).unwrap();
             let [recver, sender] = unsafe { pipe.assume_init() };
             // Initialize shared context.
@@ -348,11 +349,11 @@ impl Device {
     }
 
     /// Register a waker to wake when the device gets an event.
-    pub fn register_waker(&self, waker: Waker) {
+    pub fn register_waker(&self, waker: &Waker) {
         assert_eq!(self.old, false);
         let context = context().lock().unwrap();
         let write_fd = context.sender;
-        let message = [Message::Waker(DeviceID(self.device_id.0), waker)];
+        let message = [Message::Waker(DeviceID(self.device_id.0), waker.clone())];
         unsafe {
             if write(write_fd, message.as_ptr().cast(), mem::size_of::<Message>()) as usize
                 != mem::size_of::<Message>()
@@ -363,7 +364,7 @@ impl Device {
     }
 
     /// Convenience function to get the raw File Descriptor of the Device.
-    pub fn fd(&self) -> raw::c_int {
+    pub fn fd(&self) -> RawFd {
         self.fd
     }
 
