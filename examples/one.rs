@@ -1,4 +1,4 @@
-//! This example
+//! This example is public domain.
 
 use pasts;
 use smelling_salts::{Device, Watcher};

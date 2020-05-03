@@ -1,26 +1,46 @@
+# Smelling Salts
+#
+# Copyright (c) 2020 Jeron Aldaron Lau
+# 
+# Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+# https://apache.org/licenses/LICENSE-2.0>, or the Zlib License, <LICENSE-ZLIB
+# or http://opensource.org/licenses/Zlib>, at your option. This file may not be
+# copied, modified, or distributed except according to those terms.
+
 [package]
-name = "smelling-salts"
+name = "smelling_salts"
 version = "0.1.0"
 authors = ["Jeron Aldaron Lau <jeronlau@plopgrizzly.com>"]
-edition = "2018"
+license = "Apache-2.0 OR Zlib"
 
-license = "MIT OR BSL-1.0"
 description = """
 Start a thread to wake an async executor when the OS's I/O event notifier
 discovers that the hardware is ready.
 """
-documentation = "https://docs.rs/smelling-salts"
-homepage = "https://github.com/LordAldaron/smelling-salts/blob/master/changelog.md"
-repository = "https://github.com/LordAldaron/smelling-salts"
-readme = "README.md"
-keywords = ["futures", "platform-agnostic", "cross-platform", "io", "interrupt"]
+repository = "https://github.com/AldaronLau/smelling_salts"
+documentation = "https://docs.rs/smelling_salts"
+homepage = "https://github.com/AldaronLau/smelling_salts/blob/master/CHANGELOG.md"
+include = ["Cargo.toml", "README.md", "LICENSE-ZLIB", "LICENSE-APACHE", "src/*"]
 categories = ["asynchronous", "rust-patterns"]
+keywords = ["futures", "platform-agnostic", "cross-platform", "io", "interrupt"]
+readme = "README.md"
+edition = "2018"
 
 [badges]
-travis-ci = { repository = "LordAldaron/smelling-salts" }
+travis-ci = { repository = "AldaronLau/smelling_salts" }
+is-it-maintained-issue-resolution = { repository = "AldaronLau/smelling_salts" }
+is-it-maintained-open-issues = { repository = "AldaronLau/smelling_salts" }
 maintenance = { status = "actively-developed" }
 
 [dependencies]
 
 [dev-dependencies]
-pasts = { path = "../pasts" } # "0.0.1"
+pasts = "0.1"
+
+[package.metadata.docs.rs]
+all-features = true
+default-target = "x86_64-unknown-linux-gnu"
+
+[features]
+default = []
+docs-rs = []
