@@ -6,4 +6,5 @@ and this project adheres to [Semantic Versioning](https://jeronlau.tk/semver/).
 
 ## [0.1.0] - 2020-05-03
 ### Added
-- 
+- `Device` for registering wakers for file descriptors.
+- `Watcher` for constructing event (input or output) list to watch for.
