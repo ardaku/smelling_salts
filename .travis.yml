@@ -10,11 +10,11 @@ matrix:
         rust: nightly
         compiler: gcc
 
-      - os: windows
-        rust: nightly
+        # - os: windows
+        #  rust: nightly
 
-      - os: osx
-        rust: nightly
+        # - os: osx
+        #  rust: nightly
 
 script:
   - cargo update
