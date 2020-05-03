@@ -34,7 +34,9 @@ Add the following to your `Cargo.toml`.
 
 ```toml
 [dependencies]
-smelling_salts = "0.1.0"
+smelling_salts = "0.1"
+# Only include pasts for applications, don't use in libraries.
+pasts = "0.1"
 ```
 
 ### Example
