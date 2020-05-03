@@ -153,7 +153,7 @@ impl<'a> Future for PipeFuture<'a> {
         if let Some(output) = read_u32((self.0).0.fd()) {
             Poll::Ready(output)
         } else {
-            (self.0).0.register_waker(cx.waker);
+            (self.0).0.register_waker(cx.waker());
             Poll::Pending
         }
     }
