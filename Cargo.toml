@@ -35,7 +35,7 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 
 [dev-dependencies]
-pasts = "0.2"
+pasts = "0.3"
 
 [package.metadata.docs.rs]
 all-features = true
