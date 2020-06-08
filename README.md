@@ -41,7 +41,7 @@ pasts = "0.1"
 
 ### Example
 ```rust,no_run
-use pasts;
+use pasts::{CvarExec, prelude::*};
 use smelling_salts::{Device, Watcher};
 
 use std::convert::TryInto;
@@ -174,7 +174,9 @@ async fn async_main() {
 }
 
 fn main() {
-    <pasts::ThreadInterrupt as pasts::Interrupt>::block_on(async_main());
+    static EXECUTOR: CvarExec = CvarExec::new();
+
+    EXECUTOR.block_on(async_main());
 }
 ```
 
