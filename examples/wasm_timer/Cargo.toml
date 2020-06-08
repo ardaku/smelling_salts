@@ -1,0 +1,13 @@
+[package]
+name = "wasm_timer"
+version = "0.1.0"
+authors = ["Jeron Aldaron Lau <jeronlau@plopgrizzly.com>"]
+edition = "2018"
+
+# Build binary as a library to make WASM easier
+[lib]
+path = "src/wasm_timer.rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+smelling_salts = { path = "../../" }
