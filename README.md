@@ -134,7 +134,7 @@ impl Drop for PipeReceiver {
     fn drop(&mut self) {
         // Deregister FD, then delete (must be in this order).
         self.0.old();
-        fd_close(self.0.fd());
+        fd_close(self.0.raw());
     }
 }
 
@@ -150,7 +150,7 @@ impl<'a> Future for PipeFuture<'a> {
     type Output = u32;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        if let Some(output) = read_u32((self.0).0.fd()) {
+        if let Some(output) = read_u32((self.0).0.raw()) {
             Poll::Ready(output)
         } else {
             (self.0).0.register_waker(cx.waker());
