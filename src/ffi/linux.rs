@@ -21,6 +21,9 @@ use std::task::Waker;
 use std::thread;
 use std::os::unix::io::RawFd;
 
+/// On Linux, `RawDevice` corresponds to [RawFd](std::os::unix::io::RawFd)
+pub type RawDevice = RawFd;
+
 const EPOLL_CTL_ADD: i32 = 1;
 const EPOLL_CTL_DEL: i32 = 2;
 
@@ -267,7 +270,7 @@ impl SharedContext {
 #[derive(Debug)]
 pub(super) struct Device {
     // File descriptor to be registered with epoll.
-    fd: RawFd,
+    raw: RawFd,
     // Software ID for identifying this device.
     device_id: DeviceID,
     // True if old() deconstructor has already been called.
@@ -276,7 +279,7 @@ pub(super) struct Device {
 
 impl Device {
     /// Start checking for events on a new device from a linux file descriptor.
-    pub(super) fn new(fd: RawFd, events: Watcher) -> Self {
+    pub(super) fn new(raw: RawFd, events: Watcher) -> Self {
         // Start thread if it wasn't running before.
         INIT.call_once(|| {
             // Create pipe for communication
@@ -292,7 +295,7 @@ impl Device {
         let mut context = context().lock().unwrap();
         let device_id = context.create_id();
         let write_fd = context.sender;
-        let message = [Message::Device(DeviceID(device_id.0), fd, events)];
+        let message = [Message::Device(DeviceID(device_id.0), raw, events)];
 
         // Send message to register this device.
         unsafe {
@@ -307,7 +310,7 @@ impl Device {
         let old = false;
 
         // Return the device
-        Device { fd, device_id, old }
+        Device { raw, device_id, old }
     }
 
     /// Register a waker to wake when the device gets an event.
@@ -326,8 +329,8 @@ impl Device {
     }
 
     /// Convenience function to get the raw File Descriptor of the Device.
-    pub(super) fn fd(&self) -> RawFd {
-        self.fd
+    pub(super) fn raw(&self) -> RawFd {
+        self.raw
     }
 
     /// Stop checking for events on a device from a linux file descriptor.
@@ -343,7 +346,7 @@ impl Device {
         let mut context = context().lock().unwrap();
         let write_fd = context.sender;
         let pair = Box::pin((Mutex::new(false), Condvar::new()));
-        let message = [Message::Disconnect(self.fd, &*pair)];
+        let message = [Message::Disconnect(self.raw, &*pair)];
         // Unregister ID
         unsafe {
             if write(write_fd, message.as_ptr().cast(), mem::size_of::<Message>()) as usize

@@ -9,26 +9,28 @@
 
 use crate::watcher::Watcher;
 use std::task::Waker;
-use std::os::unix::io::RawFd;
+
+/// In the dummy implementation, `RawDevice` corresponds to `()`
+pub type RawDevice = ();
 
 /// Represents some device.
 #[derive(Debug)]
-pub struct Device(RawFd);
+pub(super) struct Device(RawDevice);
 
 impl Device {
     /// Start checking for events on a new device from a linux file descriptor.
-    pub fn new(fd: RawFd, events: Watcher) -> Self {
-        Device(fd)
+    pub(super) fn new(raw: RawDevice, _events: Watcher) -> Self {
+        Device(raw)
     }
 
     /// Register a waker to wake when the device gets an event.
-    pub fn register_waker(&self, _waker: &Waker) { }
+    pub(super) fn register_waker(&self, _waker: &Waker) { }
 
     /// Convenience function to get the raw File Descriptor of the Device.
-    pub fn fd(&self) -> RawFd {
+    pub(super) fn raw(&self) -> RawDevice {
         self.0
     }
 
     /// Stop checking for events on a device from a linux file descriptor.
-    pub fn old(&mut self) { }
+    pub(super) fn old(&mut self) { }
 }

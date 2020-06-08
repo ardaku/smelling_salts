@@ -61,5 +61,6 @@ mod device;
 #[allow(unsafe_code)]
 mod ffi;
 
-pub use watcher::*;
-pub use device::*;
+pub use watcher::Watcher;
+pub use device::Device;
+pub use ffi::RawDevice;
