@@ -4,10 +4,23 @@ version = "0.1.0"
 authors = ["Jeron Aldaron Lau <jeronlau@plopgrizzly.com>"]
 edition = "2018"
 
+# [lib]
+# name = "glue"
+# path = "src/glue.rs"
+# crate-type = ["cdylib"]
+
+# [[bin]]
+# name = "wasm_timer"
+# path = "src/main.rs"
+
 # Build binary as a library to make WASM easier
-[lib]
-path = "src/wasm_timer.rs"
-crate-type = ["cdylib"]
+# [lib]
+# name = "wasm_timer"
+# path = "src/app.rs"
+# crate-type = ["cdylib"]
 
 [dependencies]
+stdweb = "0.4"
+wasm-bindgen = "0.2"
+# web-sys = { version = "0.3", features = ["Window"] }
 smelling_salts = { path = "../../" }
