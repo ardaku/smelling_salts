@@ -135,5 +135,5 @@ async fn async_main() {
 }
 
 fn main() {
-    pasts::exec!(async_main());
+    pasts::block_on(async_main());
 }

@@ -1,17 +1,18 @@
-# Smelling Salts
-#
-# Copyright (c) 2020 Jeron Aldaron Lau
-# 
-# Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
-# https://apache.org/licenses/LICENSE-2.0>, or the Zlib License, <LICENSE-ZLIB
-# or http://opensource.org/licenses/Zlib>, at your option. This file may not be
-# copied, modified, or distributed except according to those terms.
+# Copyright Jeron Aldaron Lau 2020.
+# Distributed under either the Apache License, Version 2.0
+#    (See accompanying file LICENSE_APACHE_2_0.txt or copy at
+#          https://apache.org/licenses/LICENSE-2.0),
+# or the Boost Software License, Version 1.0.
+#    (See accompanying file LICENSE_BOOST_1_0.txt or copy at
+#          https://www.boost.org/LICENSE_1_0.txt)
+# at your option. This file may not be copied, modified, or distributed except
+# according to those terms.
 
 [package]
 name = "smelling_salts"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Jeron Aldaron Lau <jeronlau@plopgrizzly.com>"]
-license = "Apache-2.0/Zlib"
+license = "Apache-2.0 OR BSL-1.0"
 
 description = """
 Start a thread to wake an async executor when the OS's I/O event notifier
@@ -26,21 +27,11 @@ keywords = ["futures", "platform-agnostic", "cross-platform", "io", "interrupt"]
 readme = "README.md"
 edition = "2018"
 
-[badges]
-travis-ci = { repository = "AldaronLau/smelling_salts" }
-is-it-maintained-issue-resolution = { repository = "AldaronLau/smelling_salts" }
-is-it-maintained-open-issues = { repository = "AldaronLau/smelling_salts" }
-maintenance = { status = "actively-developed" }
-
 [dependencies]
 
 [dev-dependencies]
-pasts = "0.6"
+pasts = "0.7"
 
 [package.metadata.docs.rs]
 all-features = true
 default-target = "x86_64-unknown-linux-gnu"
-
-[features]
-default = []
-docs-rs = []
