@@ -23,7 +23,8 @@ const O_DIRECT: raw::c_int = 0o0040000;
 
 extern "C" {
     fn pipe2(pipefd: *mut [raw::c_int; 2], flags: raw::c_int) -> raw::c_int;
-    fn write(fd: raw::c_int, buf: *const raw::c_void, count: c_size) -> c_ssize;
+    fn write(fd: raw::c_int, buf: *const raw::c_void, count: c_size)
+        -> c_ssize;
     fn read(fd: raw::c_int, buf: *mut raw::c_void, count: c_size) -> c_ssize;
     fn close(fd: raw::c_int) -> raw::c_int;
 }
@@ -48,7 +49,8 @@ fn new_pipe() -> (raw::c_int, raw::c_int) {
     let [recver, sender] = unsafe {
         // Create pipe for communication
         let mut pipe = mem::MaybeUninit::<[raw::c_int; 2]>::uninit();
-        error(pipe2(pipe.as_mut_ptr(), O_CLOEXEC | O_NONBLOCK | O_DIRECT)).unwrap();
+        error(pipe2(pipe.as_mut_ptr(), O_CLOEXEC | O_NONBLOCK | O_DIRECT))
+            .unwrap();
         pipe.assume_init()
     };
 
@@ -68,9 +70,10 @@ fn write_u32(fd: raw::c_int, data: u32) {
 fn read_u32(fd: raw::c_int) -> Option<u32> {
     let ret = unsafe {
         let mut buffer = mem::MaybeUninit::<u32>::uninit();
-        let len: usize = read(fd, buffer.as_mut_ptr().cast(), mem::size_of::<u32>())
-            .try_into()
-            .unwrap_or(0);
+        let len: usize =
+            read(fd, buffer.as_mut_ptr().cast(), mem::size_of::<u32>())
+                .try_into()
+                .unwrap_or(0);
         if len == 0 {
             return None;
         }

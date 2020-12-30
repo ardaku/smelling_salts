@@ -32,8 +32,8 @@
     variant_size_differences
 )]
 
-mod watcher;
 mod device;
+mod watcher;
 
 #[cfg_attr(target_arch = "wasm32", path = "ffi/web.rs")]
 #[cfg_attr(
@@ -56,11 +56,11 @@ mod device;
     cfg_attr(target_os = "fuchsia", path = "ffi/fuchsia.rs"),
     cfg_attr(target_os = "redox", path = "ffi/redox.rs"),
     cfg_attr(target_os = "none", path = "ffi/none.rs"),
-    cfg_attr(target_os = "dummy", path = "ffi/dummy.rs"),
+    cfg_attr(target_os = "dummy", path = "ffi/dummy.rs")
 )]
 #[allow(unsafe_code)]
 mod ffi;
 
-pub use watcher::Watcher;
 pub use device::Device;
 pub use ffi::RawDevice;
+pub use watcher::Watcher;

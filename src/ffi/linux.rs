@@ -15,11 +15,11 @@ use std::convert::TryInto;
 use std::mem;
 use std::mem::MaybeUninit;
 use std::os::raw;
+use std::os::unix::io::RawFd;
 use std::sync::Once;
 use std::sync::{Condvar, Mutex};
 use std::task::Waker;
 use std::thread;
-use std::os::unix::io::RawFd;
 
 /// On Linux, `RawDevice` corresponds to [RawFd](std::os::unix::io::RawFd)
 pub type RawDevice = RawFd;
@@ -74,7 +74,7 @@ extern "C" {
 static INIT: Once = Once::new();
 static mut SHARED_CONTEXT: SharedContext = SharedContext::new();
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
 struct DeviceID(u64);
 
 /// A message sent from a thread to the hardware thread.
@@ -192,6 +192,8 @@ fn hardware_thread(recver: RawFd) {
                 },
             }
             continue;
+        } else {
+            context().lock().unwrap().ready.push(index.clone());
         }
 
         // File descriptor (device wake)
@@ -205,7 +207,10 @@ fn hardware_thread(recver: RawFd) {
 // Convert a C error (negative on error) into a result.
 fn error(err: raw::c_int) -> Result<(), raw::c_int> {
     if err < 0 {
-        Err(err)
+        extern "C" {
+            fn __errno_location() -> *mut raw::c_int;
+        }
+        Err(unsafe { *__errno_location() })
     } else {
         Ok(())
     }
@@ -221,6 +226,8 @@ struct Context {
     garbage: Vec<DeviceID>,
     // Send side of the pipe.
     sender: RawFd,
+    // List of ready device IDs.
+    ready: Vec<DeviceID>,
 }
 
 impl Context {
@@ -230,6 +237,7 @@ impl Context {
             next: DeviceID(1),
             garbage: Vec::new(),
             sender,
+            ready: Vec::new(),
         }
     }
 
@@ -299,7 +307,11 @@ impl Device {
 
         // Send message to register this device.
         unsafe {
-            if write(write_fd, message.as_ptr().cast(), mem::size_of::<Message>()) as usize
+            if write(
+                write_fd,
+                message.as_ptr().cast(),
+                mem::size_of::<Message>(),
+            ) as usize
                 != mem::size_of::<Message>()
             {
                 panic!("Failed write to pipe");
@@ -310,22 +322,32 @@ impl Device {
         let old = false;
 
         // Return the device
-        Device { raw, device_id, old }
+        Device {
+            raw,
+            device_id,
+            old,
+        }
     }
 
     /// Register a waker to wake when the device gets an event.
     pub(super) fn register_waker(&self, waker: &Waker) {
         assert_eq!(self.old, false);
-        let context = context().lock().unwrap();
+        let mut context = context().lock().unwrap();
         let write_fd = context.sender;
-        let message = [Message::Waker(DeviceID(self.device_id.0), waker.clone())];
+        let message =
+            [Message::Waker(DeviceID(self.device_id.0), waker.clone())];
         unsafe {
-            if write(write_fd, message.as_ptr().cast(), mem::size_of::<Message>()) as usize
+            if write(
+                write_fd,
+                message.as_ptr().cast(),
+                mem::size_of::<Message>(),
+            ) as usize
                 != mem::size_of::<Message>()
             {
                 panic!("Failed write to pipe");
             }
         }
+        context.ready.retain(|device| device.0 != self.device_id.0);
     }
 
     /// Convenience function to get the raw File Descriptor of the Device.
@@ -349,7 +371,11 @@ impl Device {
         let message = [Message::Disconnect(self.raw, &*pair)];
         // Unregister ID
         unsafe {
-            if write(write_fd, message.as_ptr().cast(), mem::size_of::<Message>()) as usize
+            if write(
+                write_fd,
+                message.as_ptr().cast(),
+                mem::size_of::<Message>(),
+            ) as usize
                 != mem::size_of::<Message>()
             {
                 panic!("Failed write to pipe");
@@ -363,6 +389,12 @@ impl Device {
         while !*started {
             started = cvar.wait(started).unwrap();
         }
+    }
+
+    /// Check if should yield to executor.
+    pub(super) fn should_yield(&self) -> bool {
+        let context = context().lock().unwrap();
+        !context.ready.contains(&self.device_id)
     }
 }
 

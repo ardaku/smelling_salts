@@ -24,7 +24,7 @@ impl Device {
     }
 
     /// Register a waker to wake when the device gets an event.
-    pub(super) fn register_waker(&self, _waker: &Waker) { }
+    pub(super) fn register_waker(&self, _waker: &Waker) {}
 
     /// Convenience function to get the raw File Descriptor of the Device.
     pub(super) fn raw(&self) -> RawDevice {
@@ -32,5 +32,5 @@ impl Device {
     }
 
     /// Stop checking for events on a device from a linux file descriptor.
-    pub(super) fn old(&mut self) { }
+    pub(super) fn old(&mut self) {}
 }

@@ -7,10 +7,7 @@
 // or http://opensource.org/licenses/Zlib>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::{
-    watcher::Watcher,
-    RawDevice,
-};
+use crate::{watcher::Watcher, RawDevice};
 use std::task::Waker;
 
 /// Represents some device.
@@ -37,5 +34,10 @@ impl Device {
     #[allow(clippy::mutex_atomic)]
     pub fn old(&mut self) {
         self.0.old()
+    }
+
+    /// Returns true if this device hasn't been waked up.
+    pub fn should_yield(&self) -> bool {
+        self.0.should_yield()
     }
 }
