@@ -8,8 +8,6 @@
 // at your option. This file may not be copied, modified, or distributed except
 // according to those terms.
 
-//! Platform-specific implementation
-
 use crate::watcher::{Watcher, EPOLLIN};
 
 use std::convert::TryInto;

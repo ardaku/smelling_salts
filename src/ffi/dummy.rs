@@ -34,4 +34,9 @@ impl Device {
 
     /// Stop checking for events on a device from a linux file descriptor.
     pub(super) fn old(&mut self) {}
+
+    /// Check if should yield to executor.
+    pub(super) fn should_yield(&self) -> bool {
+        true
+    }
 }

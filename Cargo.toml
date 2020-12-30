@@ -10,7 +10,7 @@
 
 [package]
 name = "smelling_salts"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Jeron Aldaron Lau <jeronlau@plopgrizzly.com>"]
 license = "Apache-2.0 OR BSL-1.0"
 
@@ -21,9 +21,9 @@ discovers that the hardware is ready.
 repository = "https://github.com/AldaronLau/smelling_salts"
 documentation = "https://docs.rs/smelling_salts"
 homepage = "https://github.com/AldaronLau/smelling_salts/blob/master/CHANGELOG.md"
-include = ["Cargo.toml", "README.md", "LICENSE-ZLIB", "LICENSE-APACHE", "src/*"]
-categories = ["asynchronous", "rust-patterns"]
-keywords = ["futures", "platform-agnostic", "cross-platform", "io", "interrupt"]
+include = ["Cargo.toml", "README.md", "src/*"]
+categories = ["asynchronous", "rust-patterns", "api-bindings", "hardware-support", "os"]
+keywords = ["futures", "platform-agnostic", "cross-platform", "io", "waker"]
 readme = "README.md"
 edition = "2018"
 
