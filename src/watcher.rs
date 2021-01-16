@@ -8,8 +8,8 @@
 // at your option. This file may not be copied, modified, or distributed except
 // according to those terms.
 
-pub(crate) const EPOLLIN: u32 = 0x_001;
-const EPOLLOUT: u32 = 0x_004;
+pub(crate) const EPOLLIN: u32 = 0x0001;
+const EPOLLOUT: u32 = 0x0004;
 const EPOLLET: u32 = 1 << 31;
 
 /// Which events to watch for to trigger a wake-up.
