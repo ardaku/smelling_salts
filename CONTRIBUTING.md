@@ -1,16 +1,22 @@
 # Contributing
-This repository accepts contributions.  Ideas, questions, feature requests and
-bug reports can be filed through GitHub issues.
+Anyone is welcome to contribute!  You can [open an issue],
+[Post to GitHub Discussions] or [send me an email] about anything related to
+this project.  You may also [open a PR].  I don't require PRs to be formatted in
+a specific manner, since I'll run it through rustfmt after the merge anyway.  If
+you're going to work on a PR, it would be preferred to let me know ahead of time
+(unless it's a quick fix), and open a draft PR if it's a large one.  Then I'll
+assign the issue to you.  Otherwise, I can't guarantee I won't duplicate your
+work.  If I can't contact you within a week, I may unassign you and finish your
+work (opening a Draft PR on this repository puts your code under this crate's
+license).
 
-Pull Requests are welcome on GitHub.  By committing pull requests, you accept
-that your code might be modified and reformatted to fit the project coding style
-in order to improve the implementation.  Contributed code is considered licensed
-under the same license as the rest of the project unless explicitly agreed
-otherwise.  See the `LICENSE-ZLIB` and `LICENSE-APACHE` files.
+If you open a bug report, you can usually expect it to be fixed within a week.
+If you open a feature request it may stay open indefinitely, until I need it
+too.  I mark feature requests as "enhancements" on GitHub issues.
 
-Please discuss what you want to see modified before filing a pull request if you
-don't want to be doing work that might be rejected.
+Happy coding!
 
-## git workflow
-
-Please file PR's against the `master` branch (it's the default, so super easy!).
+[open an issue]: https://github.com/AldaronLau/smelling_salts/issues
+[send me an email]: mailto:aldaronlau@gmail.com
+[open a PR]: https://github.com/AldaronLau/smelling_salts/pulls
+[Post to GitHub Discussions]: https://github.com/AldaronLau/smelling_salts/discussions
