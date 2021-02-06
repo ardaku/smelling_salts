@@ -62,10 +62,21 @@ extern "C" {
 // Convert a C error (negative on error) into a result.
 fn error(err: raw::c_int) -> Result<(), raw::c_int> {
     if err < 0 {
-        extern "C" {
-            fn __errno_location() -> *mut raw::c_int;
+        #[cfg(not(target_os = "android"))]
+        {
+            extern "C" {
+                fn __errno_location() -> *mut raw::c_int;
+            }
+            Err(unsafe { *__errno_location() })
         }
-        Err(unsafe { *__errno_location() })
+
+        #[cfg(target_os = "android")]
+        {
+            extern "C" {
+                fn __errno() -> *mut raw::c_int;
+            }
+            Err(unsafe { *__errno() })
+        }
     } else {
         Ok(())
     }
