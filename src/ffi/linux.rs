@@ -154,14 +154,10 @@ impl SharedCx {
         index
     }
 
-    /// Register waker.  Returns true if should wake immediately.
-    fn reg(&self, index: usize, waker: Waker) -> bool {
+    /// Register waker.
+    fn reg(&self, index: usize, waker: Waker) {
         let mut cx = self.devs.lock().unwrap();
-        if cx.0[index].2.load(Ordering::SeqCst) {
-            return true;
-        }
         cx.0[index].1 = Some(waker);
-        false
     }
 
     /// Stop listening to a device.
@@ -237,7 +233,7 @@ impl Device {
         // Start background thread if not running, and get state.
         let shared = SharedCx::new();
         // Default to ready
-        let ready = Arc::new(AtomicBool::new(true));
+        let ready = Arc::new(AtomicBool::new(false));
         // Start listening for events on the file descriptor.
         let index = shared.add(raw, events, ready.clone());
         // Return the device
@@ -251,9 +247,7 @@ impl Device {
 
     /// Register a waker to wake when the device gets an event.
     pub(super) fn register_waker(&self, waker: &Waker) {
-        if self.shared.reg(self.index, waker.clone()) {
-            waker.wake_by_ref();
-        }
+        self.shared.reg(self.index, waker.clone());
     }
 
     /// Convenience function to get the raw File Descriptor of the Device.
