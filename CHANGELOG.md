@@ -4,6 +4,17 @@ All notable changes to `smelling_salts` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://jeronlau.tk/semver/).
 
+## [0.3.0] - 2021-06-24
+### Changed
+ - Rename `Device::register_waker()` to `Device::sleep()`, which now
+   additionally returns `Poll::Pending` and now requires a mutable reference.
+ - Rename `Device::old()` to `Device::stop()`, which now additionally returns
+   the `RawDevice` that was stopped, or -1 if already stopped.
+ - Rename `Device::should_yield()` to `Device::pending()`
+
+### Fixed
+ - Undefined behavior on some architectures (specifically raspberry pi)
+
 ## [0.2.4] - 2021-02-14
 ### Fixed
  - Libraries built on smelling\_salts using 100% of CPU unnecessarily

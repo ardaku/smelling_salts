@@ -10,14 +10,11 @@
 
 [package]
 name = "smelling_salts"
-version = "0.2.4"
+version = "0.3.0"
 authors = ["Jeron Aldaron Lau <jeronlau@plopgrizzly.com>"]
 license = "Apache-2.0 OR MIT OR BSL-1.0"
 
-description = """
-Start a thread to wake an async executor when the OS's I/O event notifier
-discovers that the hardware is ready.
-"""
+description = "Abstraction over file descriptors to wake futures when ready."
 repository = "https://github.com/AldaronLau/smelling_salts"
 documentation = "https://docs.rs/smelling_salts"
 homepage = "https://github.com/AldaronLau/smelling_salts/blob/master/CHANGELOG.md"
@@ -30,11 +27,8 @@ edition = "2018"
 [dependencies]
 
 [dev-dependencies]
-pasts = "0.7"
+pasts = "0.8"
 
 [package.metadata.docs.rs]
 all-features = true
 default-target = "x86_64-unknown-linux-gnu"
-
-# [patch.crates-io]
-# pasts = { path = "../pasts" }

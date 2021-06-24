@@ -9,36 +9,41 @@
 // LICENSE_MIT.txt and LICENSE_BOOST_1_0.txt).
 
 use crate::{watcher::Watcher, RawDevice};
-use std::task::Waker;
+use std::task::{Context, Poll};
 
 /// Represents some device.
 #[derive(Debug)]
-pub struct Device(crate::ffi::Device);
+pub struct Device(Box<dyn crate::raw::Device>);
 
 impl Device {
     /// Start checking for events on a new device from a linux file descriptor.
+    #[inline(always)]
     pub fn new(fd: RawDevice, events: Watcher) -> Self {
-        Device(crate::ffi::Device::new(fd, events))
+        crate::raw::GLOBAL.with(|g| Device(g.device(fd, events.0)))
     }
 
     /// Register a waker to wake when the device gets an event.
-    pub fn register_waker(&self, waker: &Waker) {
-        self.0.register_waker(waker);
+    #[inline(always)]
+    pub fn sleep<T>(&mut self, context: &Context<'_>) -> Poll<T> {
+        self.0.sleep(context);
+        Poll::Pending
     }
 
     /// Convenience function to get the raw File Descriptor of the Device.
+    #[inline(always)]
     pub fn raw(&self) -> RawDevice {
         self.0.raw()
     }
 
     /// Stop checking for events on a device from a linux file descriptor.
-    #[allow(clippy::mutex_atomic)]
-    pub fn old(&mut self) {
-        self.0.old()
+    #[inline(always)]
+    pub fn stop(&mut self) -> RawDevice {
+        self.0.free()
     }
 
     /// Returns true if this device hasn't been waked up.
-    pub fn should_yield(&self) -> bool {
-        self.0.should_yield()
+    #[inline(always)]
+    pub fn pending(&self) -> bool {
+        self.0.pending()
     }
 }

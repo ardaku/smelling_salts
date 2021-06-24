@@ -94,15 +94,14 @@ impl PipeReceiver {
 impl Drop for PipeReceiver {
     fn drop(&mut self) {
         // Deregister FD, then delete (must be in this order).
-        self.0.old();
-        fd_close(self.0.raw());
+        fd_close(self.0.stop());
     }
 }
 
-pub struct PipeFuture<'a>(&'a PipeReceiver);
+pub struct PipeFuture<'a>(&'a mut PipeReceiver);
 
 impl<'a> PipeFuture<'a> {
-    pub fn new(recver: &'a PipeReceiver) -> Self {
+    pub fn new(recver: &'a mut PipeReceiver) -> Self {
         PipeFuture(recver)
     }
 }
@@ -110,19 +109,18 @@ impl<'a> PipeFuture<'a> {
 impl<'a> Future for PipeFuture<'a> {
     type Output = u32;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         if let Some(output) = read_u32((self.0).0.raw()) {
             Poll::Ready(output)
         } else {
-            (self.0).0.register_waker(cx.waker());
-            Poll::Pending
+            (self.0).0.sleep(cx)
         }
     }
 }
 
 async fn async_main() {
     let (sender, recver) = new_pipe();
-    let device = PipeReceiver::new(recver);
+    let mut device = PipeReceiver::new(recver);
 
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(1000));
@@ -130,7 +128,7 @@ async fn async_main() {
         fd_close(sender);
     });
 
-    let output = PipeFuture::new(&device).await;
+    let output = PipeFuture::new(&mut device).await;
     assert_eq!(output, MAGIC_NUMBER);
 }
 

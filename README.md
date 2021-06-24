@@ -6,7 +6,7 @@
 [![docs](https://docs.rs/smelling_salts/badge.svg)][0]
 [![crates.io](https://img.shields.io/crates/v/smelling_salts.svg)][1]
 
-Start a thread to wake an async executor when the OS's I/O event notifier gathers that the hardware is ready.
+Abstraction over file descriptors to wake futures when ready.
 
 ## About
 If you're writing a Rust library to handle hardware asynchronously, you should
