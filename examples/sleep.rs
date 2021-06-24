@@ -73,7 +73,7 @@ impl Future for Sleep {
         if self.0.pending() {
             return self.0.sleep(cx);
         }
-        // 
+        //
         let mut x = MaybeUninit::<u64>::uninit();
         let v = unsafe {
             read(self.0.raw(), x.as_mut_ptr(), std::mem::size_of::<u64>())

@@ -20,7 +20,18 @@ use std::task::{Context, Wake, Waker};
 /// On Linux, `RawDevice` corresponds to [RawFd](std::os::unix::io::RawFd)
 pub type RawDevice = RawFd;
 
-#[repr(C, packed)]
+#[cfg_attr(
+    any(
+        all(
+            target_arch = "x86",
+            not(target_env = "musl"),
+            not(target_os = "android")
+        ),
+        target_arch = "x86_64"
+    ),
+    repr(packed)
+)]
+#[repr(C)]
 struct EpollEvent {
     events: u32,
     data: u64,
@@ -56,6 +67,7 @@ fn thread_loop(epfd: RawFd) {
     // Set pending to false, and wake the waker.
     let event = unsafe { event.assume_init() };
     let dw = event.data as usize as *mut DevWaker;
+
     unsafe {
         (*dw).pending.store(false, Ordering::SeqCst);
         (*dw).waker.wake_by_ref();
