@@ -30,7 +30,7 @@ edition = "2018"
 [dependencies]
 
 [dev-dependencies]
-pasts = "0.7"
+pasts = "0.8"
 
 [package.metadata.docs.rs]
 all-features = true
