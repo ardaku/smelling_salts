@@ -40,7 +40,7 @@ pub(crate) trait Global {
     fn device(&self, fd: RawDevice, events: u32) -> Box<dyn Device>;
 }
 
-pub(crate) trait Device: std::fmt::Debug {
+pub(crate) trait Device: std::fmt::Debug + Send + Sync {
     /// Return `true` if this wasn't the device that woke, reset.
     fn pending(&self) -> bool;
     /// Reset the `Waker`.
