@@ -14,8 +14,8 @@
 //!
 //! ```toml
 //! [dependencies]
-//! smelling_salts = "0.2"
-//! pasts = "0.7"
+//! smelling_salts = "0.4"
+//! pasts = "0.8"
 //! ```
 //!
 //! ### Example

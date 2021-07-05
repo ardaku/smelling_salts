@@ -10,7 +10,7 @@
 
 [package]
 name = "smelling_salts"
-version = "0.3.1"
+version = "0.4.0"
 authors = ["Jeron Aldaron Lau <jeronlau@plopgrizzly.com>"]
 license = "Apache-2.0 OR MIT OR BSL-1.0"
 
