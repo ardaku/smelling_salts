@@ -10,9 +10,9 @@
 
 #![allow(unsafe_code)]
 
-use std::task::Context;
-use std::sync::Once;
 use std::mem::MaybeUninit;
+use std::sync::Once;
+use std::task::Context;
 
 pub use ffi::RawDevice;
 
@@ -64,7 +64,5 @@ pub(crate) fn global() -> &'static dyn Global {
     START.call_once(|| unsafe {
         std::ptr::write(GLOBAL.as_mut_ptr(), ffi::global());
     });
-    unsafe {
-        &*(*GLOBAL.as_ptr())
-    }
+    unsafe { &*(*GLOBAL.as_ptr()) }
 }
