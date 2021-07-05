@@ -19,7 +19,7 @@ impl Device {
     /// Start checking for events on a new device from a linux file descriptor.
     #[inline(always)]
     pub fn new(fd: RawDevice, events: Watcher) -> Self {
-        crate::raw::GLOBAL.with(|g| Device(g.device(fd, events.0)))
+        Device(crate::raw::global().device(fd, events.0))
     }
 
     /// Register a waker to wake when the device gets an event.
