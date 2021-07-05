@@ -8,7 +8,13 @@
 // At your choosing (See accompanying files LICENSE_APACHE_2_0.txt,
 // LICENSE_MIT.txt and LICENSE_BOOST_1_0.txt).
 
+#![allow(unsafe_code)]
+
 use std::task::Context;
+use std::sync::Once;
+use std::mem::MaybeUninit;
+
+pub use ffi::RawDevice;
 
 #[cfg_attr(target_arch = "wasm32", path = "raw/web.rs")]
 #[cfg_attr(
@@ -51,8 +57,14 @@ pub(crate) trait Device: std::fmt::Debug + Send + Sync {
     fn free(&mut self) -> RawDevice;
 }
 
-thread_local! {
-    pub(crate) static GLOBAL: Box<dyn Global> = ffi::global();
-}
+static START: Once = Once::new();
+static mut GLOBAL: MaybeUninit<Box<dyn Global>> = MaybeUninit::uninit();
 
-pub use ffi::RawDevice;
+pub(crate) fn global() -> &'static dyn Global {
+    START.call_once(|| unsafe {
+        std::ptr::write(GLOBAL.as_mut_ptr(), ffi::global());
+    });
+    unsafe {
+        &*(*GLOBAL.as_ptr())
+    }
+}
