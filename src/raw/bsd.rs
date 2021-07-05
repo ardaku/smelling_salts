@@ -10,4 +10,9 @@
 
 //! Platform-specific implementation
 
-include!("dummy.rs");
+/// On BSD, RawDevice corresponds to (TODO).
+pub type RawDevice = ();
+
+pub(super) fn global() -> Box<dyn super::Global> {
+    Box::new(super::FakeGlobal)
+}

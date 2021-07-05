@@ -10,8 +10,8 @@
 
 //! Platform-specific implementation
 
-/// On Windows, RawDevice corresponds to (TODO).
-pub type RawDevice = ();
+/// On Aldro, RawDevice corresponds to u32.
+pub type RawDevice = u32;
 
 pub(super) fn global() -> Box<dyn super::Global> {
     Box::new(super::FakeGlobal)

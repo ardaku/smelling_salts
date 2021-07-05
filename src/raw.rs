@@ -16,14 +16,24 @@ use std::task::Context;
 
 pub use ffi::RawDevice;
 
-#[cfg_attr(target_arch = "wasm32", path = "raw/web.rs")]
 #[cfg_attr(
-    not(target_arch = "wasm32"),
+    any(target_arch = "wasm32", target_arch = "asmjs"),
+    cfg_attr(target_os = "wasi", path = "raw/wasi.rs"),
+    cfg_attr(target_os = "aldro", path = "raw/aldro.rs"),
+    cfg_attr(
+        any(target_os = "unknown", target_os = "emscripten"),
+        path = "raw/dom.rs"
+    )
+)]
+#[cfg_attr(
+    not(any(target_arch = "wasm32", target_arch = "asmjs")),
     cfg_attr(target_os = "linux", path = "raw/linux.rs"),
     cfg_attr(target_os = "android", path = "raw/android.rs"),
     cfg_attr(target_os = "macos", path = "raw/macos.rs"),
     cfg_attr(target_os = "ios", path = "raw/ios.rs"),
     cfg_attr(target_os = "windows", path = "raw/windows.rs"),
+    cfg_attr(target_os = "fuchsia", path = "raw/fuchsia.rs"),
+    cfg_attr(target_os = "redox", path = "raw/redox.rs"),
     cfg_attr(
         any(
             target_os = "freebsd",
@@ -33,12 +43,8 @@ pub use ffi::RawDevice;
             target_os = "netbsd"
         ),
         path = "raw/bsd.rs",
-    ),
-    cfg_attr(target_os = "fuchsia", path = "raw/fuchsia.rs"),
-    cfg_attr(target_os = "redox", path = "raw/redox.rs"),
-    cfg_attr(target_os = "dive", path = "raw/dive.rs")
+    )
 )]
-#[allow(unsafe_code)]
 mod ffi;
 
 pub(crate) trait Global {
@@ -55,6 +61,31 @@ pub(crate) trait Device: std::fmt::Debug + Send + Sync {
     fn raw(&self) -> RawDevice;
     /// Stop listening on this device (automatic on Drop).
     fn free(&mut self) -> RawDevice;
+}
+
+/// Global state for when the system implementation can fail.
+struct FakeGlobal;
+
+impl Global for FakeGlobal {
+    fn device(&self, fd: RawDevice, _events: u32) -> Box<dyn Device> {
+        Box::new(FakeDevice(fd))
+    }
+}
+
+#[derive(Debug)]
+struct FakeDevice(RawDevice);
+
+impl Device for FakeDevice {
+    fn pending(&self) -> bool {
+        true
+    }
+    fn sleep(&mut self, _cx: &Context<'_>) {}
+    fn raw(&self) -> RawDevice {
+        self.0
+    }
+    fn free(&mut self) -> RawDevice {
+        self.raw()
+    }
 }
 
 static START: Once = Once::new();
