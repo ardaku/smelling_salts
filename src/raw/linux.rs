@@ -197,6 +197,6 @@ pub(super) fn global() -> Box<dyn super::Global> {
         thread_loop(epollfd)
     });
 
-    // Return thread-local state.
+    // Return global state.
     Box::new(Global { epollfd })
 }

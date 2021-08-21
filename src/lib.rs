@@ -148,10 +148,12 @@
     variant_size_differences
 )]
 
-mod device;
-mod raw;
+// mod device; // FIXME: Remove
+// mod raw; // FIXME: Remove
+mod sleeper;
 mod watcher;
 
-pub use device::Device;
-pub use raw::RawDevice;
+// pub use device::Device;
+// pub use raw::RawDevice;
+pub use sleeper::{Device, RawDevice, Reactor, Sleeper};
 pub use watcher::Watcher;
