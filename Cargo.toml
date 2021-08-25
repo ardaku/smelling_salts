@@ -1,5 +1,4 @@
-# Smelling Salts
-# Copyright © 2020-2021 Jeron Aldaron Lau.
+# Copyright © 2020-2021 The Smelling Salts Crate Contributors.
 #
 # Licensed under any of:
 #  - Apache License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
@@ -11,7 +10,6 @@
 [package]
 name = "smelling_salts"
 version = "0.4.0"
-authors = ["Jeron Aldaron Lau <jeronlau@plopgrizzly.com>"]
 license = "Apache-2.0 OR MIT OR BSL-1.0"
 
 description = "Abstraction over file descriptors to wake futures when ready."
@@ -24,7 +22,9 @@ keywords = ["futures", "platform-agnostic", "cross-platform", "io", "waker"]
 readme = "README.md"
 edition = "2018"
 
-[dependencies]
+[dependencies.flume]
+version = "0.10"
+default-features = false
 
 [dev-dependencies]
 pasts = "0.8"
