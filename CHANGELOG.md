@@ -4,6 +4,18 @@ All notable changes to `smelling_salts` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://jeronlau.tk/semver/).
 
+## [0.5.0] - 2021-08-26
+### Added
+ - `Driver` struct.
+ - Implementation of `Future` for `Device`
+
+### Changed
+ - Moved everything into the `linux` module.
+ - Smelling salts now depends on the `flume` crate as it's only dependency
+
+### Removed
+ - All methods on `Device`
+
 ## [0.4.0] - 2021-07-05
 ### Added
  - Implementation for `Send` + `Sync` on `Device`
