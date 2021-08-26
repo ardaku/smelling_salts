@@ -4,6 +4,10 @@ All notable changes to `smelling_salts` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://jeronlau.tk/semver/).
 
+## [0.5.1] - 2021-08-26
+### Fixed
+ - Example in the documentation not compiling
+
 ## [0.5.0] - 2021-08-26
 ### Added
  - `Driver` struct.
