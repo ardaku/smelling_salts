@@ -61,6 +61,7 @@ mod timer {
                 driver().discard(self.1);
                 let _ret = close(self.1);
                 assert_eq!(0, _ret);
+                std::mem::drop(std::ptr::read(self));
                 return None;
             }
             Some(())
