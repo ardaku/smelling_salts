@@ -22,10 +22,5 @@ keywords = ["futures", "platform-agnostic", "cross-platform", "io", "waker"]
 readme = "README.md"
 edition = "2018"
 
-[dependencies.flume]
-version = "0.10"
-default-features = false
-features = ["async"]
-
 [dev-dependencies]
 pasts = "0.8"

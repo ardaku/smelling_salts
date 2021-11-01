@@ -4,24 +4,14 @@
 mod pipe {
     #![allow(unsafe_code)]
 
-    use flume::Sender;
-    use smelling_salts::linux::{Device, Driver, RawDevice, Watcher};
+    use smelling_salts::linux::{Device, Watcher};
     use std::convert::TryInto;
     use std::future::Future;
     use std::mem::{self, MaybeUninit};
     use std::os::raw;
+    use std::os::unix::io::RawFd;
     use std::pin::Pin;
-    use std::sync::Once;
     use std::task::{Context, Poll};
-
-    fn driver() -> &'static Driver {
-        static mut DRIVER: MaybeUninit<Driver> = MaybeUninit::uninit();
-        static ONCE: Once = Once::new();
-        unsafe {
-            ONCE.call_once(|| DRIVER = MaybeUninit::new(Driver::new()));
-            &*DRIVER.as_ptr()
-        }
-    }
 
     // From fcntl.h
     const O_CLOEXEC: raw::c_int = 0o2000000;
@@ -29,44 +19,40 @@ mod pipe {
     const O_DIRECT: raw::c_int = 0o0040000;
 
     extern "C" {
-        fn pipe2(pipefd: *mut [raw::c_int; 2], flags: raw::c_int) -> RawDevice;
-        fn write(fd: RawDevice, buf: *const raw::c_void, count: usize)
+        fn pipe2(pipefd: *mut [RawFd; 2], flags: raw::c_int) -> RawFd;
+        fn write(fd: RawFd, buf: *const raw::c_void, count: usize)
             -> isize;
-        fn read(fd: RawDevice, buf: *mut raw::c_void, count: usize) -> isize;
-        fn close(fd: RawDevice) -> raw::c_int;
-    }
-
-    struct PipeDriver(Sender<u32>, RawDevice);
-
-    impl PipeDriver {
-        unsafe fn callback(&mut self) -> Option<()> {
-            let mut x = MaybeUninit::<u32>::uninit();
-            let v = read(self.1, x.as_mut_ptr().cast(), mem::size_of::<u32>());
-            if v == mem::size_of::<u32>().try_into().unwrap()
-                && self.0.send(x.assume_init()).is_err()
-            {
-                driver().discard(self.1);
-                let _ret = close(self.1);
-                assert_eq!(0, _ret);
-                std::mem::drop(std::ptr::read(self));
-                return None;
-            }
-            Some(())
-        }
+        fn read(fd: RawFd, buf: *mut raw::c_void, count: usize) -> isize;
+        fn close(fd: RawFd) -> raw::c_int;
     }
 
     /// A `PipeReceiver` device future.
-    pub struct PipeReceiver(Device<u32>);
+    pub struct PipeReceiver(Device, RawFd);
 
     impl Future for PipeReceiver {
         type Output = u32;
         fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<u32> {
-            Pin::new(&mut self.get_mut().0).poll(cx)
+            let fd = self.1;
+            let mut this = self.get_mut();
+            let ret = Pin::new(&mut this.0).poll(cx).map(|()| unsafe {
+                let mut x = MaybeUninit::<u32>::uninit();
+                let v = read(fd, x.as_mut_ptr().cast(), mem::size_of::<u32>());
+                if v == mem::size_of::<u32>().try_into().unwrap() {
+                    Some(x.assume_init().try_into().unwrap())
+                } else {
+                    None
+                }
+            });
+            match ret {
+                Poll::Ready(None) => Pin::new(&mut this).poll(cx),
+                Poll::Ready(Some(x)) => Poll::Ready(x),
+                Poll::Pending => Poll::Pending,
+            }
         }
     }
 
     /// A `PipeSender` device.
-    pub struct PipeSender(RawDevice);
+    pub struct PipeSender(RawFd);
 
     impl PipeSender {
         /// Send a 32-bit value over the pipe.
@@ -101,11 +87,9 @@ mod pipe {
             pipe.assume_init()
         };
 
-        let constructor = |sender| PipeDriver(sender, fd);
-        let callback = PipeDriver::callback;
         let watcher = Watcher::new().input();
         (
-            PipeReceiver(driver().device(constructor, fd, callback, watcher)),
+            PipeReceiver(Device::new(fd, watcher, true), fd),
             PipeSender(sender),
         )
     }

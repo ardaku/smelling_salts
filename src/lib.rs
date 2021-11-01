@@ -28,7 +28,7 @@
 //! ####################
 //! # For Applications #
 //! ####################
-//! 
+//!
 //! [dependencies.pasts]
 //! version = "0.8"
 //! ```
@@ -55,7 +55,10 @@
     variant_size_differences
 )]
 
-#[cfg(target_os = "linux")]
-pub mod linux;
+// #[cfg(target_os = "linux")]
+// pub mod linux;
 #[cfg(target_os = "linux")]
 mod watcher;
+
+#[cfg(target_os = "linux")]
+pub mod linux;

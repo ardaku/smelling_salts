@@ -4,26 +4,16 @@
 mod timer {
     #![allow(unsafe_code)]
 
-    use flume::Sender;
-    use smelling_salts::linux::{Device, Driver, RawDevice, Watcher};
+    use smelling_salts::linux::{Device, Watcher};
     use std::convert::TryInto;
     use std::future::Future;
     use std::mem::{self, MaybeUninit};
     use std::os::raw;
+    use std::os::unix::io::RawFd;
     use std::pin::Pin;
     use std::ptr;
-    use std::sync::Once;
     use std::task::{Context, Poll};
     use std::time::Duration;
-
-    fn driver() -> &'static Driver {
-        static mut DRIVER: MaybeUninit<Driver> = MaybeUninit::uninit();
-        static ONCE: Once = Once::new();
-        unsafe {
-            ONCE.call_once(|| DRIVER = MaybeUninit::new(Driver::new()));
-            &*DRIVER.as_ptr()
-        }
-    }
 
     #[repr(C)]
     struct TimeSpec {
@@ -38,38 +28,18 @@ mod timer {
     }
 
     extern "C" {
-        fn timerfd_create(clockid: raw::c_int, flags: raw::c_int) -> RawDevice;
+        fn timerfd_create(clockid: raw::c_int, flags: raw::c_int) -> RawFd;
         fn timerfd_settime(
-            fd: RawDevice,
+            fd: RawFd,
             flags: raw::c_int,
             new_value: *const ITimerSpec,
             old_value: *mut ITimerSpec,
         ) -> raw::c_int;
-        fn read(fd: RawDevice, buf: *mut u64, count: usize) -> isize;
-        fn close(fd: RawDevice) -> raw::c_int;
-    }
-
-    struct TimerDriver(Sender<usize>, RawDevice);
-
-    impl TimerDriver {
-        unsafe fn callback(&mut self) -> Option<()> {
-            let mut x = MaybeUninit::<u64>::uninit();
-            let v = read(self.1, x.as_mut_ptr(), mem::size_of::<u64>());
-            if v == mem::size_of::<u64>().try_into().unwrap()
-                && self.0.send(x.assume_init().try_into().unwrap()).is_err()
-            {
-                driver().discard(self.1);
-                let _ret = close(self.1);
-                assert_eq!(0, _ret);
-                std::mem::drop(std::ptr::read(self));
-                return None;
-            }
-            Some(())
-        }
+        fn read(fd: RawFd, buf: *mut u64, count: usize) -> isize;
     }
 
     /// A `Timer` device future.
-    pub struct Timer(Device<usize>);
+    pub struct Timer(Device, RawFd);
 
     impl Timer {
         /// Create a new `Timer`.
@@ -84,17 +54,30 @@ mod timer {
             };
             let _ret = unsafe { timerfd_settime(fd, 0, &its, ptr::null_mut()) };
             assert_eq!(0, _ret);
-            let constructor = |sender| TimerDriver(sender, fd);
-            let callback = TimerDriver::callback;
             let watcher = Watcher::new().input();
-            Self(driver().device(constructor, fd, callback, watcher))
+            Self(Device::new(fd, watcher, true), fd)
         }
     }
 
     impl Future for Timer {
         type Output = usize;
         fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<usize> {
-            Pin::new(&mut self.get_mut().0).poll(cx)
+            let fd = self.1;
+            let mut this = self.get_mut();
+            let ret = Pin::new(&mut this.0).poll(cx).map(|()| unsafe {
+                let mut x = MaybeUninit::<u64>::uninit();
+                let v = read(fd, x.as_mut_ptr(), mem::size_of::<u64>());
+                if v == mem::size_of::<u64>().try_into().unwrap() {
+                    x.assume_init().try_into().unwrap()
+                } else {
+                    0
+                }
+            });
+            if ret == Poll::Ready(0) {
+                Pin::new(&mut this).poll(cx)
+            } else {
+                ret
+            }
         }
     }
 }
