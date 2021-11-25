@@ -275,12 +275,14 @@ unsafe fn start_thread(epoll_fd: RawFd) {
         // Since event has succeeded we can assume it's initialized.
         let pointer: *mut DeviceInternal =
             (*event.as_mut_ptr()).data.ptr.cast();
-        // Only wake if ready is false.
-        if !(*pointer).ready.load(Ordering::Acquire) {
-            if let Some(w) = (*pointer).waker.take() {
-                w.wake();
-            }
-            (*pointer).ready.store(true, Ordering::Release);
+        // Spinlock until ready.
+        while (*pointer).ready.load(Ordering::Acquire) {
+        }
+        // Release the lock & wake the future
+        let maybe_waker = (*pointer).waker.take();
+        (*pointer).ready.store(true, Ordering::Release);
+        if let Some(w) = maybe_waker {
+            w.wake();
         }
     });
 }
