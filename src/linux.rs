@@ -1,12 +1,12 @@
 //! Linux Smelling Salts API.
-//! 
+//!
 //! ```rust no_run
 //! #![deny(unsafe_code)]
-//! 
+//!
 //! /// Timer module
 //! mod timer {
 //!     #![allow(unsafe_code)]
-//! 
+//!
 //!     use smelling_salts::linux::{Device, Watcher};
 //!     use std::convert::TryInto;
 //!     use std::future::Future;
@@ -17,19 +17,19 @@
 //!     use std::ptr;
 //!     use std::task::{Context, Poll};
 //!     use std::time::Duration;
-//! 
+//!
 //!     #[repr(C)]
 //!     struct TimeSpec {
 //!         sec: isize,
 //!         nsec: raw::c_long,
 //!     }
-//! 
+//!
 //!     #[repr(C)]
 //!     struct ITimerSpec {
 //!         interval: TimeSpec,
 //!         value: TimeSpec,
 //!     }
-//! 
+//!
 //!     extern "C" {
 //!         fn timerfd_create(clockid: raw::c_int, flags: raw::c_int) -> RawFd;
 //!         fn timerfd_settime(
@@ -40,10 +40,10 @@
 //!         ) -> raw::c_int;
 //!         fn read(fd: RawFd, buf: *mut u64, count: usize) -> isize;
 //!     }
-//! 
+//!
 //!     /// A `Timer` device future.
 //!     pub struct Timer(Device, RawFd);
-//! 
+//!
 //!     impl Timer {
 //!         /// Create a new `Timer`.
 //!         pub fn new(dur: Duration) -> Self {
@@ -61,7 +61,7 @@
 //!             Self(Device::new(fd, watcher, true), fd)
 //!         }
 //!     }
-//! 
+//!
 //!     impl Future for Timer {
 //!         type Output = usize;
 //!         fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<usize> {
@@ -84,10 +84,10 @@
 //!         }
 //!     }
 //! }
-//! 
+//!
 //! // Export the `Timer` future.
 //! use timer::Timer;
-//! 
+//!
 //! fn main() {
 //!     pasts::block_on(async {
 //!         let mut timer = Timer::new(std::time::Duration::from_secs_f32(1.0));
@@ -276,8 +276,7 @@ unsafe fn start_thread(epoll_fd: RawFd) {
         let pointer: *mut DeviceInternal =
             (*event.as_mut_ptr()).data.ptr.cast();
         // Spinlock until ready.
-        while (*pointer).ready.load(Ordering::Acquire) {
-        }
+        while (*pointer).ready.load(Ordering::Acquire) {}
         // Release the lock & wake the future
         let maybe_waker = (*pointer).waker.take();
         (*pointer).ready.store(true, Ordering::Release);

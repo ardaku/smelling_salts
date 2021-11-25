@@ -20,8 +20,7 @@ mod pipe {
 
     extern "C" {
         fn pipe2(pipefd: *mut [RawFd; 2], flags: raw::c_int) -> RawFd;
-        fn write(fd: RawFd, buf: *const raw::c_void, count: usize)
-            -> isize;
+        fn write(fd: RawFd, buf: *const raw::c_void, count: usize) -> isize;
         fn read(fd: RawFd, buf: *mut raw::c_void, count: usize) -> isize;
         fn close(fd: RawFd) -> raw::c_int;
     }
