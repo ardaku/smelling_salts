@@ -13,21 +13,16 @@
 //! Add the following to your `Cargo.toml`.
 //!
 //! ```toml
-//! #################
-//! # For Libraries #
-//! #################
+//! ##################
+//! ## For Libraries #
+//! ##################
 //!
 //! [dependencies.smelling_salts]
-//! version = "0.5"
+//! version = "0.6"
 //!
-//! [dependencies.flume]
-//! version = "0.10"
-//! default-features = false
-//! features = ["async"]
-//!
-//! ####################
-//! # For Applications #
-//! ####################
+//! #####################
+//! ## For Applications #
+//! #####################
 //!
 //! [dependencies.pasts]
 //! version = "0.8"
@@ -55,8 +50,6 @@
     variant_size_differences
 )]
 
-// #[cfg(target_os = "linux")]
-// pub mod linux;
 #[cfg(target_os = "linux")]
 mod watcher;
 
