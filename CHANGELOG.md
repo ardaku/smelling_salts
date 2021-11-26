@@ -4,6 +4,18 @@ All notable changes to `smelling_salts` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://jeronlau.tk/semver/).
 
+## [0.6.0] - 2021-11-25
+### Added
+ - `Device::new()` to be used instead of `Driver` type.
+
+### Changed
+ - No longer depends on the `flume` crate (or any crate); now uses a custom
+   waking mechanism based on a spin-lock with atomics.
+
+### Removed
+ - `Driver`
+ - `RawDevice`
+
 ## [0.5.1] - 2021-08-26
 ### Fixed
  - Example in the documentation not compiling
