@@ -4,14 +4,12 @@
 mod pipe {
     #![allow(unsafe_code)]
 
+    use pasts::prelude::*;
     use smelling_salts::linux::{Device, Watcher};
     use std::convert::TryInto;
-    use std::future::Future;
     use std::mem::{self, MaybeUninit};
     use std::os::raw;
     use std::os::unix::io::RawFd;
-    use std::pin::Pin;
-    use std::task::{Context, Poll};
 
     // From fcntl.h
     const O_CLOEXEC: raw::c_int = 0o2000000;
@@ -28,12 +26,13 @@ mod pipe {
     /// A `PipeReceiver` device future.
     pub struct PipeReceiver(Device, RawFd);
 
-    impl Future for PipeReceiver {
-        type Output = u32;
-        fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<u32> {
+    impl Notifier for PipeReceiver {
+        type Event = u32;
+
+        fn poll_next(self: Pin<&mut Self>, exec: &mut Exec<'_>) -> Poll<u32> {
             let fd = self.1;
             let mut this = self.get_mut();
-            let ret = Pin::new(&mut this.0).poll(cx).map(|()| unsafe {
+            let ret = Pin::new(&mut this.0).poll_next(exec).map(|()| unsafe {
                 let mut x = MaybeUninit::<u32>::uninit();
                 let v = read(fd, x.as_mut_ptr().cast(), mem::size_of::<u32>());
                 if v == mem::size_of::<u32>().try_into().unwrap() {
@@ -43,7 +42,7 @@ mod pipe {
                 }
             });
             match ret {
-                Poll::Ready(None) => Pin::new(&mut this).poll(cx),
+                Poll::Ready(None) => Pin::new(&mut this).poll_next(exec),
                 Poll::Ready(Some(x)) => Poll::Ready(x),
                 Poll::Pending => Poll::Pending,
             }
@@ -94,20 +93,21 @@ mod pipe {
     }
 }
 
-use pipe::pipe;
+use self::pipe::pipe;
+use pasts::prelude::*;
 
 const MAGIC_NUMBER: u32 = 0xDEAD_BEEF;
 
 fn main() {
-    pasts::block_on(async {
-        let (recver, sender) = pipe();
+    pasts::Executor::default().spawn(Box::pin(async {
+        let (mut recver, sender) = pipe();
 
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(1000));
             sender.send(MAGIC_NUMBER);
         });
 
-        let value = recver.await;
+        let value = recver.next().await;
         assert_eq!(value, MAGIC_NUMBER);
-    });
+    }));
 }

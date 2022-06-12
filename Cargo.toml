@@ -22,5 +22,5 @@ keywords = ["futures", "platform-agnostic", "cross-platform", "io", "waker"]
 readme = "README.md"
 edition = "2018"
 
-[dev-dependencies]
-pasts = "0.10"
+[dependencies]
+pasts = "0.11"

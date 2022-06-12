@@ -1,116 +1,20 @@
 //! Linux Smelling Salts API.
 //!
-//! ```rust no_run
-//! #![deny(unsafe_code)]
-//!
-//! /// Timer module
-//! mod timer {
-//!     #![allow(unsafe_code)]
-//!
-//!     use smelling_salts::linux::{Device, Watcher};
-//!     use std::convert::TryInto;
-//!     use std::future::Future;
-//!     use std::mem::{self, MaybeUninit};
-//!     use std::os::raw;
-//!     use std::os::unix::io::RawFd;
-//!     use std::pin::Pin;
-//!     use std::ptr;
-//!     use std::task::{Context, Poll};
-//!     use std::time::Duration;
-//!
-//!     #[repr(C)]
-//!     struct TimeSpec {
-//!         sec: isize,
-//!         nsec: raw::c_long,
-//!     }
-//!
-//!     #[repr(C)]
-//!     struct ITimerSpec {
-//!         interval: TimeSpec,
-//!         value: TimeSpec,
-//!     }
-//!
-//!     extern "C" {
-//!         fn timerfd_create(clockid: raw::c_int, flags: raw::c_int) -> RawFd;
-//!         fn timerfd_settime(
-//!             fd: RawFd,
-//!             flags: raw::c_int,
-//!             new_value: *const ITimerSpec,
-//!             old_value: *mut ITimerSpec,
-//!         ) -> raw::c_int;
-//!         fn read(fd: RawFd, buf: *mut u64, count: usize) -> isize;
-//!     }
-//!
-//!     /// A `Timer` device future.
-//!     pub struct Timer(Device, RawFd);
-//!
-//!     impl Timer {
-//!         /// Create a new `Timer`.
-//!         pub fn new(dur: Duration) -> Self {
-//!             // Create Monotonic (1), Non-Blocking (2048) Timer
-//!             let fd = unsafe { timerfd_create(1, 2048) };
-//!             let sec = dur.as_secs() as _;
-//!             let nsec = dur.subsec_nanos() as _;
-//!             let its = ITimerSpec {
-//!                 interval: TimeSpec { sec, nsec },
-//!                 value: TimeSpec { sec, nsec },
-//!             };
-//!             let _ret = unsafe { timerfd_settime(fd, 0, &its, ptr::null_mut()) };
-//!             assert_eq!(0, _ret);
-//!             let watcher = Watcher::new().input();
-//!             Self(Device::new(fd, watcher, true), fd)
-//!         }
-//!     }
-//!
-//!     impl Future for Timer {
-//!         type Output = usize;
-//!         fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<usize> {
-//!             let fd = self.1;
-//!             let mut this = self.get_mut();
-//!             let ret = Pin::new(&mut this.0).poll(cx).map(|()| unsafe {
-//!                 let mut x = MaybeUninit::<u64>::uninit();
-//!                 let v = read(fd, x.as_mut_ptr(), mem::size_of::<u64>());
-//!                 if v == mem::size_of::<u64>().try_into().unwrap() {
-//!                     x.assume_init().try_into().unwrap()
-//!                 } else {
-//!                     0
-//!                 }
-//!             });
-//!             if ret == Poll::Ready(0) {
-//!                 Pin::new(&mut this).poll(cx)
-//!             } else {
-//!                 ret
-//!             }
-//!         }
-//!     }
-//! }
-//!
-//! // Export the `Timer` future.
-//! use timer::Timer;
-//!
-//! fn main() {
-//!     pasts::block_on(async {
-//!         let mut timer = Timer::new(std::time::Duration::from_secs_f32(1.0));
-//!         println!("Sleeping for 1 second 5 times…");
-//!         for i in 0..5 {
-//!             (&mut timer).await;
-//!             println!("Slept {} time(s)…", i + 1);
-//!         }
-//!     });
-//! }
+//! ```rust,no_run
+#![doc = include_str!("../examples/sleep.rs")]
 //! ```
 
 #![allow(unsafe_code)]
 
+use pasts::prelude::*;
+
 use std::fmt::{Debug, Formatter};
-use std::future::Future;
 use std::mem::MaybeUninit;
 use std::os::raw::{c_int, c_void};
 use std::os::unix::io::RawFd;
-use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Once;
-use std::task::{Context, Poll, Waker};
+use std::task::Waker;
 
 pub use crate::watcher::Watcher;
 
@@ -207,7 +111,7 @@ struct DeviceInternal {
     waker: Option<Waker>,
 }
 
-/// Asynchronous device future.  Becomes ready when awoken.
+/// [`Notifier`] for asynchronous device events.
 pub struct Device(Pin<Box<DeviceInternal>>);
 
 impl Debug for Device {
@@ -217,7 +121,11 @@ impl Debug for Device {
 }
 
 impl Device {
-    /// Create a new asynchronous `Device` future.
+    /// Create a new device event notifier.
+    ///
+    ///  - `fd`: The linux file descriptor to register
+    ///  - `events`: Which events to watch for
+    ///  - `close`: Set to true to close the file descriptor upon drop.
     ///
     /// # Panics
     /// If `fd` cannot be used with epoll, is invalid, already registered, or
@@ -247,19 +155,16 @@ impl Drop for Device {
     }
 }
 
-impl Future for Device {
-    type Output = ();
+impl Notifier for Device {
+    type Event = ();
 
-    fn poll(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Self::Output> {
+    fn poll_next(mut self: Pin<&mut Self>, exec: &mut Exec<'_>) -> Poll<()> {
         if self.0.ready.load(Ordering::Acquire) {
-            self.0.waker = Some(cx.waker().clone());
+            self.0.waker = Some(exec.waker().clone());
             self.0.ready.store(false, Ordering::Release);
-            Poll::Ready(())
+            Ready(())
         } else {
-            Poll::Pending
+            Pending
         }
     }
 }

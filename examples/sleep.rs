@@ -4,15 +4,13 @@
 mod timer {
     #![allow(unsafe_code)]
 
+    use pasts::prelude::*;
     use smelling_salts::linux::{Device, Watcher};
     use std::convert::TryInto;
-    use std::future::Future;
     use std::mem::{self, MaybeUninit};
     use std::os::raw;
     use std::os::unix::io::RawFd;
-    use std::pin::Pin;
     use std::ptr;
-    use std::task::{Context, Poll};
     use std::time::Duration;
 
     #[repr(C)]
@@ -59,12 +57,13 @@ mod timer {
         }
     }
 
-    impl Future for Timer {
-        type Output = usize;
-        fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<usize> {
+    impl Notifier for Timer {
+        type Event = usize;
+
+        fn poll_next(self: Pin<&mut Self>, exec: &mut Exec<'_>) -> Poll<usize> {
             let fd = self.1;
             let mut this = self.get_mut();
-            let ret = Pin::new(&mut this.0).poll(cx).map(|()| unsafe {
+            let ret = Pin::new(&mut this.0).poll_next(exec).map(|()| unsafe {
                 let mut x = MaybeUninit::<u64>::uninit();
                 let v = read(fd, x.as_mut_ptr(), mem::size_of::<u64>());
                 if v == mem::size_of::<u64>().try_into().unwrap() {
@@ -74,7 +73,7 @@ mod timer {
                 }
             });
             if ret == Poll::Ready(0) {
-                Pin::new(&mut this).poll(cx)
+                Pin::new(&mut this).poll_next(exec)
             } else {
                 ret
             }
@@ -82,16 +81,16 @@ mod timer {
     }
 }
 
-// Export the `Timer` future.
-use timer::Timer;
+use self::timer::Timer;
+use pasts::prelude::*;
 
 fn main() {
-    pasts::block_on(async {
+    pasts::Executor::default().spawn(Box::pin(async {
         let mut timer = Timer::new(std::time::Duration::from_secs_f32(1.0));
         println!("Sleeping for 1 second 5 times…");
         for i in 0..5 {
-            (&mut timer).await;
-            println!("Slept {} time(s)…", i + 1);
+            timer.next().await;
+            println!("Slept {} time(s)!", i + 1);
         }
-    });
+    }));
 }
