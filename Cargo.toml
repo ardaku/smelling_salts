@@ -23,4 +23,4 @@ readme = "README.md"
 edition = "2018"
 
 [dependencies]
-pasts = "0.11"
+pasts = "0.12"
