@@ -85,12 +85,12 @@ use self::timer::Timer;
 use pasts::prelude::*;
 
 fn main() {
-    pasts::Executor::default().spawn(Box::pin(async {
+    pasts::Executor::default().spawn(async {
         let mut timer = Timer::new(std::time::Duration::from_secs_f32(1.0));
         println!("Sleeping for 1 second 5 times…");
         for i in 0..5 {
             timer.next().await;
             println!("Slept {} time(s)!", i + 1);
         }
-    }));
+    });
 }

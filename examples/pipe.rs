@@ -99,7 +99,7 @@ use pasts::prelude::*;
 const MAGIC_NUMBER: u32 = 0xDEAD_BEEF;
 
 fn main() {
-    pasts::Executor::default().spawn(Box::pin(async {
+    pasts::Executor::default().spawn(async {
         let (mut recver, sender) = pipe();
 
         std::thread::spawn(move || {
@@ -109,5 +109,5 @@ fn main() {
 
         let value = recver.next().await;
         assert_eq!(value, MAGIC_NUMBER);
-    }));
+    });
 }
