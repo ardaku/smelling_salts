@@ -6,32 +6,24 @@
 //  - MIT License (https://mit-license.org/)
 // At your choosing (See accompanying files LICENSE_APACHE_2_0.txt,
 // LICENSE_MIT.txt and LICENSE_BOOST_1_0.txt).
+//
+//! Abstraction over OS APIs to wake futures when ready.
 //!
 //! ## Getting Started
-//! Add the following to your `Cargo.toml`.
+//! Each module is enabled with a feature by the same name.  The module is not
+//! included if the target platform doesn't support it.
 //!
-//! ```toml
-//! ##################
-//! ## For Libraries #
-//! ##################
+//! These are abstractions over OS-defined APIs for waking futures.  Each module
+//! contains:
 //!
-//! [dependencies.smelling_salts]
-//! version = "0.6"
-//!
-//! #####################
-//! ## For Applications #
-//! #####################
-//!
-//! [dependencies.pasts]
-//! version = "0.8"
-//! ```
+//!  - `Device`: A handle to the device
+//!  - `DeviceBuilder`: API-specific builder for `Device`
 
 #![doc(
     html_logo_url = "https://libcala.github.io/logo.svg",
     html_favicon_url = "https://libcala.github.io/icon.svg",
     html_root_url = "https://docs.rs/smelling_salts"
 )]
-#![deny(unsafe_code)]
 #![warn(
     anonymous_parameters,
     missing_copy_implementations,
@@ -48,8 +40,5 @@
     variant_size_differences
 )]
 
-#[cfg(target_os = "linux")]
-mod watcher;
-
-#[cfg(target_os = "linux")]
-pub mod linux;
+#[cfg(all(target_os = "linux", feature = "epoll"))]
+pub mod epoll;

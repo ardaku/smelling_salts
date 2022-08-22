@@ -11,16 +11,33 @@
 name = "smelling_salts"
 version = "0.6.0"
 license = "Apache-2.0 OR MIT OR BSL-1.0"
-
 description = "Abstraction over file descriptors to wake futures when ready."
 repository = "https://github.com/AldaronLau/smelling_salts"
 documentation = "https://docs.rs/smelling_salts"
 homepage = "https://github.com/AldaronLau/smelling_salts/blob/master/CHANGELOG.md"
 include = ["Cargo.toml", "README.md", "src/*"]
-categories = ["asynchronous", "rust-patterns", "api-bindings", "hardware-support", "os"]
+categories = [
+    "asynchronous",
+    "rust-patterns",
+    "api-bindings",
+    "hardware-support",
+    "os",
+]
 keywords = ["futures", "platform-agnostic", "cross-platform", "io", "waker"]
 readme = "README.md"
 edition = "2018"
 
-[dependencies]
-pasts = "0.12"
+[dependencies.pasts]
+version = "0.12"
+
+[dependencies.whisk]
+version = "0.7"
+features = ["pasts"]
+
+[features]
+# Modern Linux file descriptors
+epoll = []
+# BSD/MacOS file descriptors
+kqueue = []
+# MacOS runloop
+runloop = []
