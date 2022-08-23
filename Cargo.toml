@@ -25,7 +25,8 @@ categories = [
 ]
 keywords = ["futures", "platform-agnostic", "cross-platform", "io", "waker"]
 readme = "README.md"
-edition = "2018"
+edition = "2021"
+rust-version = "1.60"
 
 [dependencies.pasts]
 version = "0.12"
