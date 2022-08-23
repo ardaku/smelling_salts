@@ -93,7 +93,7 @@ impl DeviceBuilder {
     }
 
     /// Finish building the [`Device`]
-    pub fn build(self, fd: RawFd) -> Device {
+    pub fn watch(self, fd: RawFd) -> Device {
         let state = state();
         let channel = Channel::new();
         let ptr: *mut _ = unsafe { mem::transmute(channel.clone()) };

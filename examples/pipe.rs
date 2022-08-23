@@ -92,7 +92,7 @@ pub fn pipe() -> (PipeReceiver, PipeSender) {
         pipe.assume_init()
     };
 
-    let device = Some(Device::builder().input().build(fd));
+    let device = Some(Device::builder().input().watch(fd));
 
     (PipeReceiver(device), PipeSender(sender))
 }

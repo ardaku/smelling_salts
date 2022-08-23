@@ -6,22 +6,22 @@
 [![docs](https://docs.rs/smelling_salts/badge.svg)][0]
 [![crates.io](https://img.shields.io/crates/v/smelling_salts.svg)][1]
 
-Abstraction over file descriptors to wake futures when ready.
+Abstraction over OS APIs to handle asynchronous device waking.
 
 ## About
 If you're writing a Rust library to handle hardware asynchronously, you should
 use this crate.  This library automatically wakes futures by registering a waker
 with a device that you construct with a file descriptor.
 
-### Currently Supported Platforms
-- Linux (epoll)
+### Currently Supported APIs
+ - Epoll (Linux)
 
-### Planned Platforms
-- Windows
-- MacOS
-- BSD
-- Various Bare Metal?
-- Others?
+### Planned APIs
+ - Run loops (MacOS)
+ - Kqueue (BSD/MacOS)
+ - IOCP (Windows)
+ - Various Bare Metal?
+ - Others?
 
 ## License
 Licensed under any of

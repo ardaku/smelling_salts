@@ -61,7 +61,7 @@ impl Timer {
         };
         let _ret = unsafe { timerfd_settime(fd, 0, &its, ptr::null_mut()) };
         assert_eq!(0, _ret);
-        Self(Some(Device::builder().input().build(fd)))
+        Self(Some(Device::builder().input().watch(fd)))
     }
 }
 

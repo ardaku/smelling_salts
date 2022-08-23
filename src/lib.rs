@@ -7,7 +7,7 @@
 // At your choosing (See accompanying files LICENSE_APACHE_2_0.txt,
 // LICENSE_MIT.txt and LICENSE_BOOST_1_0.txt).
 //
-//! Abstraction over OS APIs to wake futures when ready.
+//! Abstraction over OS APIs to handle asynchronous device waking.
 //!
 //! ## Getting Started
 //! Each module is enabled with a feature by the same name.  The module is not
