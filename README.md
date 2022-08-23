@@ -23,6 +23,11 @@ with a device that you construct with a file descriptor.
  - Various Bare Metal?
  - Others?
 
+## MSRV
+The minimum supported Rust version of Smelling Salts is 1.60.0; bumping the MSRV
+is considered a breaking change and requires incrementing the leftmost version
+number.
+
 ## License
 Licensed under any of
  - Apache License, Version 2.0, ([LICENSE_APACHE_2_0.txt][7]
