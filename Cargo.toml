@@ -12,9 +12,9 @@ name = "smelling_salts"
 version = "0.7.0"
 license = "Apache-2.0 OR MIT OR BSL-1.0"
 description = "Abstraction over OS APIs to handle asynchronous device waking"
-repository = "https://github.com/AldaronLau/smelling_salts"
+repository = "https://github.com/ardaku/smelling_salts"
 documentation = "https://docs.rs/smelling_salts"
-homepage = "https://github.com/AldaronLau/smelling_salts/blob/master/CHANGELOG.md"
+homepage = "https://github.com/ardaku/smelling_salts/blob/master/CHANGELOG.md"
 include = ["Cargo.toml", "README.md", "src/*"]
 categories = [
     "asynchronous",
