@@ -22,7 +22,7 @@ use std::{
 };
 
 use pasts::prelude::*;
-use whisk::Channel;
+use whisk::{Chan, Channel};
 
 type Poll<T = ()> = pasts::prelude::Poll<T>;
 
@@ -35,7 +35,7 @@ const EPOLLET: u32 = 1 << 31;
 /// Dropping the device will remove it from the watchlist.
 #[derive(Debug)]
 pub struct Device {
-    channel: Channel,
+    channel: Chan,
     fd: RawFd,
 }
 
@@ -54,8 +54,8 @@ impl Device {
 impl Notifier for Device {
     type Event = ();
 
-    fn poll_next(mut self: Pin<&mut Self>, exec: &mut Exec<'_>) -> Poll {
-        Pin::new(&mut self.channel).poll_next(exec)
+    fn poll_next(self: Pin<&mut Self>, exec: &mut Exec<'_>) -> Poll {
+        Pin::new(&mut &*self.channel).poll_next(exec)
     }
 }
 
@@ -95,7 +95,7 @@ impl DeviceBuilder {
     /// Finish building the [`Device`]
     pub fn watch(self, fd: RawFd) -> Device {
         let state = state();
-        let channel = Channel::new();
+        let channel = Chan::from(Channel::new());
         let ptr: *mut _ = unsafe { mem::transmute(channel.clone()) };
         let data = EpollData { ptr };
         let events = self.events;
@@ -179,7 +179,7 @@ async fn epoll(state: &'static State) {
 
             // Send wake notification
             let pointer = (*event.as_mut_ptr()).data.ptr;
-            let channel: Channel = mem::transmute(pointer);
+            let channel: Chan = mem::transmute(pointer);
             channel.send(()).await;
             mem::forget(channel);
         }
