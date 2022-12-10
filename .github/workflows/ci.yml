@@ -7,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        tc: [1.64.0, stable, beta, nightly]
+        tc: [1.65.0, stable, beta, nightly]
         ar:
         - --all --no-default-features
         - --all --features=epoll
@@ -26,7 +26,7 @@ jobs:
     runs-on: macos-latest
     strategy:
       matrix:
-        tc: [1.64.0, stable, beta, nightly]
+        tc: [1.65.0, stable, beta, nightly]
         ar:
         - --all --no-default-features
     steps:
@@ -44,7 +44,7 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        tc: [1.64.0, stable, beta, nightly]
+        tc: [1.65.0, stable, beta, nightly]
         ar:
         - --all --no-default-features
     steps:
