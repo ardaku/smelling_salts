@@ -4,6 +4,11 @@ All notable changes to `smelling_salts` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://github.com/AldaronLau/semver).
 
+## [0.9.0] - 2022-12-10
+### Changed
+ - Upgrade `whisk` from 0.8 to 0.9
+ - Bump MSRV to 1.65
+
 ## [0.8.0] - 2022-10-16
 ### Changed
  - Upgrade `whisk` from 0.7 to 0.8
