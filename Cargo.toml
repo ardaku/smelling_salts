@@ -32,7 +32,7 @@ rust-version = "1.65"
 all-features = true
 
 [dependencies.pasts]
-version = "0.12"
+version = "0.13"
 
 [dependencies.whisk]
 version = "0.9"
