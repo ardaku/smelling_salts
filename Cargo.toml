@@ -9,7 +9,7 @@
 
 [package]
 name = "smelling_salts"
-version = "0.9.2"
+version = "0.10.0"
 license = "Apache-2.0 OR BSL-1.0 OR MIT"
 description = "Abstraction over OS APIs to handle asynchronous device waking"
 repository = "https://github.com/ardaku/smelling_salts"
@@ -32,10 +32,14 @@ rust-version = "1.65"
 all-features = true
 
 [dependencies.pasts]
-version = "0.12"
+version = "0.13"
 
 [dependencies.whisk]
-version = "0.9"
+version = "0.10"
+features = ["pasts"]
+
+[dev-dependencies.async_main]
+version = "0.2"
 features = ["pasts"]
 
 [features]

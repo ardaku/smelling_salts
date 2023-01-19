@@ -4,6 +4,7 @@ use std::{
     os::{raw, unix::io::RawFd},
 };
 
+use async_main::async_main;
 use pasts::prelude::*;
 use smelling_salts::epoll::Device;
 
@@ -25,10 +26,10 @@ pub struct PipeReceiver(Option<Device>);
 impl Notifier for PipeReceiver {
     type Event = u32;
 
-    fn poll_next(mut self: Pin<&mut Self>, exec: &mut Exec<'_>) -> Poll<u32> {
+    fn poll_next(mut self: Pin<&mut Self>, task: &mut Task<'_>) -> Poll<u32> {
         let device = self.0.as_mut().unwrap();
 
-        if Pin::new(&mut *device).poll_next(exec).is_pending() {
+        if Pin::new(&mut *device).poll_next(task).is_pending() {
             return Pending;
         }
 
@@ -101,16 +102,15 @@ pub fn pipe() -> (PipeReceiver, PipeSender) {
 
 const MAGIC_NUMBER: u32 = 0xDEAD_BEEF;
 
-fn main() {
-    pasts::Executor::default().spawn(async {
-        let (mut recver, sender) = pipe();
+#[async_main]
+async fn main(_spawner: impl Spawn) {
+    let (mut recver, sender) = pipe();
 
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(1000));
-            sender.send(MAGIC_NUMBER);
-        });
-
-        let value = recver.next().await;
-        assert_eq!(value, MAGIC_NUMBER);
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        sender.send(MAGIC_NUMBER);
     });
+
+    let value = recver.next().await;
+    assert_eq!(value, MAGIC_NUMBER);
 }

@@ -6,6 +6,7 @@ use std::{
     time::Duration,
 };
 
+use async_main::async_main;
 use pasts::prelude::*;
 use smelling_salts::epoll::Device;
 
@@ -68,10 +69,10 @@ impl Timer {
 impl Notifier for Timer {
     type Event = usize;
 
-    fn poll_next(mut self: Pin<&mut Self>, exec: &mut Exec<'_>) -> Poll<usize> {
+    fn poll_next(mut self: Pin<&mut Self>, task: &mut Task<'_>) -> Poll<usize> {
         let device = self.0.as_mut().unwrap();
 
-        if Pin::new(&mut *device).poll_next(exec).is_pending() {
+        if Pin::new(&mut *device).poll_next(task).is_pending() {
             return Pending;
         }
 
@@ -95,13 +96,12 @@ impl Notifier for Timer {
 
 // Usage
 
-fn main() {
-    pasts::Executor::default().spawn(async {
-        let mut timer = Timer::new(std::time::Duration::from_secs_f32(1.0));
-        println!("Sleeping for 1 second 5 times…");
-        for i in 1..=5 {
-            timer.next().await;
-            println!("Slept {i} time(s)!");
-        }
-    });
+#[async_main]
+async fn main(_spawner: impl Spawn) {
+    let mut timer = Timer::new(std::time::Duration::from_secs_f32(1.0));
+    println!("Sleeping for 1 second 5 times…");
+    for i in 1..=5 {
+        timer.next().await;
+        println!("Slept {i} time(s)!");
+    }
 }

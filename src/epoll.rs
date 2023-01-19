@@ -54,8 +54,8 @@ impl Device {
 impl Notifier for Device {
     type Event = ();
 
-    fn poll_next(mut self: Pin<&mut Self>, exec: &mut Exec<'_>) -> Poll {
-        Pin::new(&mut self.channel).poll_next(exec)
+    fn poll_next(mut self: Pin<&mut Self>, task: &mut Task<'_>) -> Poll {
+        Pin::new(&mut self.channel).poll_next(task)
     }
 }
 
@@ -161,7 +161,7 @@ fn state() -> &'static State {
         let epoll_fd = epoll_create1(0);
         STATE = MaybeUninit::new(State { epoll_fd });
         std::thread::spawn(move || {
-            pasts::Executor::default().spawn(epoll(STATE.assume_init_ref()))
+            pasts::Executor::default().block_on(epoll(STATE.assume_init_ref()))
         });
     });
     unsafe { STATE.assume_init_ref() }

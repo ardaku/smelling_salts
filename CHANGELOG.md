@@ -4,6 +4,11 @@ All notable changes to `smelling_salts` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://github.com/AldaronLau/semver).
 
+## [0.10.0] - 2023-01-18
+### Changed
+ - Updated `whisk` to 0.10
+ - Updated `pasts` to 0.13
+
 ## [0.9.2] - 2022-12-10
 ### Fixed
  - Broken links
