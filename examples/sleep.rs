@@ -1,9 +1,8 @@
 use std::{
-    convert::TryInto,
     io::Read,
     mem,
     os::{
-        fd::{FromRawFd, OwnedFd, RawFd},
+        fd::{FromRawFd, RawFd},
         raw,
     },
     ptr,
@@ -12,7 +11,7 @@ use std::{
 
 use async_main::async_main;
 use pasts::prelude::*;
-use smelling_salts::epoll::Device;
+use smelling_salts::{Device, OsDevice, Watch};
 
 #[repr(C)]
 struct TimeSpec {
@@ -55,9 +54,9 @@ impl Timer {
         assert_eq!(_ret, 0);
         assert_ne!(fd, -1);
 
-        let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+        let fd = unsafe { OsDevice::from_raw_fd(fd) };
 
-        Self(Device::builder().input().watch(fd))
+        Self(Device::new(fd, Watch::INPUT))
     }
 }
 

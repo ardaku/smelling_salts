@@ -6,11 +6,13 @@ use std::{
         fd::{FromRawFd, OwnedFd, RawFd},
         raw,
     },
+    thread,
+    time::Duration,
 };
 
 use async_main::async_main;
 use pasts::prelude::*;
-use smelling_salts::epoll::Device;
+use smelling_salts::{Device, Watch};
 
 // From fcntl.h
 const O_CLOEXEC: raw::c_int = 0o2000000;
@@ -66,24 +68,27 @@ pub fn pipe() -> (PipeReceiver, PipeSender) {
         (OwnedFd::from_raw_fd(fd), OwnedFd::from_raw_fd(sender))
     };
 
-    let device = Device::builder().input().watch(fd);
+    let device = Device::new(fd, Watch::INPUT);
 
     (PipeReceiver(device), PipeSender(sender.into()))
 }
 
 // Usage
 
-const MAGIC_NUMBER: u32 = 0xDEAD_BEEF;
-
 #[async_main]
 async fn main(_spawner: impl Spawn) {
+    const MAGIC_NUMBER: u32 = 0xDEAD_BEEF;
+
     let (mut recver, mut sender) = pipe();
 
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_secs(1));
+    thread::spawn(move || {
+        println!("Sleeping for 1 second");
+        thread::sleep(Duration::from_secs(1));
+        println!("Sending magic number");
         sender.send(MAGIC_NUMBER);
     });
 
     let value = recver.next().await;
     assert_eq!(value, MAGIC_NUMBER);
+    println!("Received magic number");
 }

@@ -44,19 +44,17 @@ features = ["pasts"]
 
 [features]
 default = []
-# Modern Linux file descriptors
-epoll = []
-# BSD/MacOS file descriptors
-kqueue = []
-# MacOS runloop
-runloop = []
+
+example-platform-linux = []
+
+[[example]]
+name = "stdin"
+required-features = ["example-platform-linux"]
 
 [[example]]
 name = "pipe"
-path = "examples/pipe.rs"
-required-features = ["epoll"]
+required-features = ["example-platform-linux"]
 
 [[example]]
 name = "sleep"
-path = "examples/sleep.rs"
-required-features = ["epoll"]
+required-features = ["example-platform-linux"]

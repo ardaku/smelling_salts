@@ -6,56 +6,36 @@
 //  - MIT License (https://mit-license.org/)
 // At your choosing (See accompanying files LICENSE_APACHE_2_0.txt,
 // LICENSE_MIT.txt and LICENSE_BOOST_1_0.txt).
-//! # Epoll Smelling Salts API
-//!
-//! ```rust,no_run
-#![doc = include_str!("../examples/sleep.rs")]
-//! ```
 
 use std::{
     io::{Error, Read, Write},
     mem::{self, MaybeUninit},
     os::{
-        fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd, RawFd},
+        fd::{AsFd, AsRawFd, BorrowedFd, RawFd},
         raw::{c_int, c_void},
     },
     sync::{Arc, Once},
 };
 
-use pasts::prelude::*;
 use whisk::{Channel, Queue};
 
-const EPOLLIN: u32 = 0x0001;
-const EPOLLOUT: u32 = 0x0004;
-const EPOLLET: u32 = 1 << 31;
+use crate::{kind::DeviceKind, Device, Interface, Platform, Watch};
 
 type Result<T = (), E = Error> = std::result::Result<T, E>;
 
-/// Device handle
-///
-/// Dropping the device will remove it from the watchlist.
-#[derive(Debug)]
-pub struct Device {
-    channel: Channel,
-    owned_fd: OwnedFd,
-}
-
-impl Device {
-    /// Get a builder for the [`Device`]
-    pub fn builder() -> DeviceBuilder {
-        DeviceBuilder { events: EPOLLET }
-    }
-}
-
 impl AsFd for Device {
     fn as_fd(&self) -> BorrowedFd<'_> {
-        self.owned_fd.as_fd()
+        let DeviceKind::OwnedFd(ref owned_fd) = self.kind;
+
+        owned_fd.as_fd()
     }
 }
 
 impl AsRawFd for Device {
     fn as_raw_fd(&self) -> RawFd {
-        self.owned_fd.as_raw_fd()
+        let DeviceKind::OwnedFd(ref owned_fd) = self.kind;
+
+        owned_fd.as_raw_fd()
     }
 }
 
@@ -106,68 +86,6 @@ impl Write for &Device {
 
     fn flush(&mut self) -> Result {
         Ok(())
-    }
-}
-
-impl Notifier for Device {
-    type Event = ();
-
-    fn poll_next(mut self: Pin<&mut Self>, task: &mut Task<'_>) -> Poll {
-        Pin::new(&mut self.channel).poll_next(task)
-    }
-}
-
-impl Drop for Device {
-    fn drop(&mut self) {
-        let epoll_fd = state().epoll_fd;
-        let mut _ev = MaybeUninit::<EpollEvent>::zeroed();
-        let ret = unsafe {
-            epoll_ctl(epoll_fd, 2, self.as_raw_fd(), _ev.as_mut_ptr())
-        };
-        assert_eq!(ret, 0);
-    }
-}
-
-/// Builder for [`Device`].
-#[derive(Debug)]
-#[allow(missing_copy_implementations)]
-pub struct DeviceBuilder {
-    events: u32,
-}
-
-impl DeviceBuilder {
-    /// Watch for specific events
-    pub fn events(mut self, which: u32) -> Self {
-        self.events |= which;
-        self
-    }
-
-    /// Watch for input
-    pub fn input(self) -> Self {
-        self.events(EPOLLIN)
-    }
-
-    /// Watch for output
-    pub fn output(self) -> Self {
-        self.events(EPOLLOUT)
-    }
-
-    /// Finish building the [`Device`]
-    pub fn watch(self, fd: impl Into<OwnedFd>) -> Device {
-        let owned_fd = fd.into();
-        let state = state();
-        let channel = Channel::new();
-        let queue: Arc<Queue> = channel.clone().into();
-        let ptr: *mut _ = unsafe { mem::transmute(queue) };
-        let data = EpollData { ptr };
-        let events = self.events;
-        let mut event = EpollEvent { events, data };
-        let ret = unsafe {
-            epoll_ctl(state.epoll_fd, 1, owned_fd.as_raw_fd(), &mut event)
-        };
-        assert_eq!(ret, 0);
-
-        Device { channel, owned_fd }
     }
 }
 
@@ -247,5 +165,38 @@ async fn epoll(state: &'static State) {
             queue.send(()).await;
             mem::forget(queue);
         }
+    }
+}
+
+impl Interface for Platform {
+    const WATCH_INPUT: u32 = 0x0001;
+    const WATCH_OUTPUT: u32 = 0x0004;
+
+    fn watch(kind: &DeviceKind, watch: Watch) -> Channel {
+        const EDGE_TRIGGERED: u32 = 1 << 31;
+
+        let DeviceKind::OwnedFd(ref owned_fd) = kind;
+        let state = state();
+        let channel = Channel::new();
+        let queue: Arc<Queue> = channel.clone().into();
+        let ptr: *mut _ = unsafe { mem::transmute(queue) };
+        let data = EpollData { ptr };
+        let events = watch.0 | EDGE_TRIGGERED;
+        let mut event = EpollEvent { events, data };
+        let ret = unsafe {
+            epoll_ctl(state.epoll_fd, 1, owned_fd.as_raw_fd(), &mut event)
+        };
+        assert_eq!(ret, 0);
+
+        channel
+    }
+
+    fn unwatch(kind: &DeviceKind) {
+        let DeviceKind::OwnedFd(ref owned_fd) = kind;
+        let raw_fd = owned_fd.as_raw_fd();
+        let epoll_fd = state().epoll_fd;
+        let mut _ev = MaybeUninit::<EpollEvent>::zeroed();
+        let ret = unsafe { epoll_ctl(epoll_fd, 2, raw_fd, _ev.as_mut_ptr()) };
+        assert_eq!(ret, 0);
     }
 }

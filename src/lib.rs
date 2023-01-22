@@ -10,14 +10,26 @@
 //! Abstraction over OS APIs to handle asynchronous device waking.
 //!
 //! ## Getting Started
-//! Each module is enabled with a feature by the same name.  The module is not
-//! included if the target platform doesn't support it.
+//! Most devices are represented as file descriptors on unix-like operating
+//! systems (MacOS also has run loops).  On Windows, devices are usually sockets
+//! or handles.  WebAssembly running in the browser doesn't have a equivalent.
+//! To get around these device backend differences, Smelling Salts exposed an
+//! [`OsDevice`] type which has [`From`] conversions implemented for the
+//! platform types.
 //!
-//! These are abstractions over OS-defined APIs for waking futures.  Each module
-//! contains:
+//! An [`OsDevice`] by itself isn't that useful, though.  When you have a handle
+//! to a device, you want to asynchronously watch it for events.  For this, you
+//! construct a [`Device`], which implements [`Notifier`](pasts::Notifier).
+//! But, general devices aren't that useful either, so you'll need to wrap it
+//! in your own custom type.  Usually, you will filter out some of the events,
+//! so you'll need to implement [`Notifier`](pasts::Notifier).
 //!
-//!  - `Device`: A handle to the device
-//!  - `DeviceBuilder`: API-specific builder for `Device`
+//! Here's a simple example implementing a [`Notifier`](pasts::Notifier) for
+//! stdin line reading:
+//!
+//! ```rust,no_run
+#![doc = include_str!("../examples/stdin.rs")]
+//! ```
 
 #![doc(
     html_logo_url = "https://libcala.github.io/logo.svg",
@@ -40,5 +52,35 @@
     variant_size_differences
 )]
 
-#[cfg(all(target_os = "linux", feature = "epoll"))]
-pub mod epoll;
+mod device;
+mod kind;
+mod watch;
+
+#[cfg_attr(target_os = "linux", path = "epoll.rs")]
+#[cfg_attr(not(target_os = "linux"), path = "mock.rs")]
+mod platform;
+
+pub use self::{device::Device, kind::OsDevice, watch::Watch};
+
+trait Interface {
+    const WATCH_INPUT: u32;
+    const WATCH_OUTPUT: u32;
+
+    /// Watch a [`DeviceKind`]
+    fn watch(kind: &kind::DeviceKind, watch: Watch) -> whisk::Channel;
+
+    /// Unwatch a [`DeviceKind`]
+    fn unwatch(kind: &kind::DeviceKind);
+}
+
+struct Platform;
+
+impl Platform {
+    fn watch(kind: &kind::DeviceKind, watch: Watch) -> whisk::Channel {
+        <Platform as Interface>::watch(kind, watch)
+    }
+
+    fn unwatch(kind: &kind::DeviceKind) {
+        <Platform as Interface>::unwatch(kind);
+    }
+}
