@@ -38,7 +38,7 @@ impl Notifier for PipeReceiver {
         unsafe {
             let mut x = MaybeUninit::<u32>::uninit();
             if read(
-                device.fd().as_raw_fd(),
+                device.as_raw_fd(),
                 x.as_mut_ptr().cast(),
                 mem::size_of::<u32>(),
             ) == mem::size_of::<u32>().try_into().unwrap()

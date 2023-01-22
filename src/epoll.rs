@@ -42,10 +42,17 @@ impl Device {
     pub fn builder() -> DeviceBuilder {
         DeviceBuilder { events: EPOLLET }
     }
+}
 
-    /// Get the file descriptor for this device
-    pub fn fd(&self) -> BorrowedFd<'_> {
+impl AsFd for Device {
+    fn as_fd(&self) -> BorrowedFd<'_> {
         self.owned_fd.as_fd()
+    }
+}
+
+impl AsRawFd for Device {
+    fn as_raw_fd(&self) -> RawFd {
+        self.owned_fd.as_raw_fd()
     }
 }
 
@@ -62,7 +69,7 @@ impl Drop for Device {
         let epoll_fd = state().epoll_fd;
         let mut _ev = MaybeUninit::<EpollEvent>::zeroed();
         let ret = unsafe {
-            epoll_ctl(epoll_fd, 2, self.fd().as_raw_fd(), _ev.as_mut_ptr())
+            epoll_ctl(epoll_fd, 2, self.as_raw_fd(), _ev.as_mut_ptr())
         };
         assert_eq!(ret, 0);
     }

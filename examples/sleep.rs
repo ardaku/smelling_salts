@@ -70,11 +70,8 @@ impl Notifier for Timer {
 
         unsafe {
             let mut x = MaybeUninit::<u64>::uninit();
-            if read(
-                device.fd().as_raw_fd(),
-                x.as_mut_ptr(),
-                mem::size_of::<u64>(),
-            ) == mem::size_of::<u64>().try_into().unwrap()
+            if read(device.as_raw_fd(), x.as_mut_ptr(), mem::size_of::<u64>())
+                == mem::size_of::<u64>().try_into().unwrap()
             {
                 let count = x.assume_init().try_into().unwrap();
                 if count == 0 {
