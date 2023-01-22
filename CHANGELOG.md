@@ -4,10 +4,20 @@ All notable changes to `smelling_salts` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://github.com/AldaronLau/semver).
 
-## [0.11.0] - Unreleased
+## [0.11.0] - 2023-01-22
+### Added 
+ - `Watch` abstraction of which devices to watch for
+ - `Device::new()`
+ - `OsDevice` abstraction
+
 ### Changed
  - Bump MSRV to 1.66
  - Use `std::os::fd`
+ - Make `epoll` module API the root module API
+
+### Removed
+ - `DeviceBuilder` - use `Watch` with `Device::new()` instead
+ - `Device::builder()`
 
 ## [0.10.0] - 2023-01-18
 ### Changed
