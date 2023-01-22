@@ -28,7 +28,7 @@
 //! stdin line reading:
 //!
 //! ```rust,no_run
-#![doc = include_str!("../examples/stdin.rs")]
+#![cfg_attr(target_os = "linux", doc = include_str!("../examples/stdin.rs"))]
 //! ```
 
 #![doc(
