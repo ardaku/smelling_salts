@@ -24,7 +24,7 @@ with a device that you construct with a file descriptor.
  - Others?
 
 ## MSRV
-The minimum supported Rust version of Smelling Salts is 1.65.0; bumping the MSRV
+The minimum supported Rust version of Smelling Salts is 1.66; bumping the MSRV
 is considered a breaking change and requires incrementing the leftmost version
 number.
 
