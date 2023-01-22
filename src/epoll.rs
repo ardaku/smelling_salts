@@ -1,4 +1,4 @@
-// Copyright © 2020-2022 The Smelling Salts Contributors.
+// Copyright © 2020-2023 The Smelling Salts Contributors.
 //
 // Licensed under any of:
 //  - Apache License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
@@ -15,16 +15,14 @@
 use std::{
     mem::{self, MaybeUninit},
     os::{
+        fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd, RawFd},
         raw::{c_int, c_void},
-        unix::io::RawFd,
     },
     sync::{Arc, Once},
 };
 
 use pasts::prelude::*;
 use whisk::{Channel, Queue};
-
-type Poll<T = ()> = pasts::prelude::Poll<T>;
 
 const EPOLLIN: u32 = 0x0001;
 const EPOLLOUT: u32 = 0x0004;
@@ -36,7 +34,7 @@ const EPOLLET: u32 = 1 << 31;
 #[derive(Debug)]
 pub struct Device {
     channel: Channel,
-    fd: RawFd,
+    owned_fd: OwnedFd,
 }
 
 impl Device {
@@ -46,8 +44,8 @@ impl Device {
     }
 
     /// Get the file descriptor for this device
-    pub fn fd(&self) -> RawFd {
-        self.fd
+    pub fn fd(&self) -> BorrowedFd<'_> {
+        self.owned_fd.as_fd()
     }
 }
 
@@ -63,7 +61,9 @@ impl Drop for Device {
     fn drop(&mut self) {
         let epoll_fd = state().epoll_fd;
         let mut _ev = MaybeUninit::<EpollEvent>::zeroed();
-        let ret = unsafe { epoll_ctl(epoll_fd, 2, self.fd, _ev.as_mut_ptr()) };
+        let ret = unsafe {
+            epoll_ctl(epoll_fd, 2, self.fd().as_raw_fd(), _ev.as_mut_ptr())
+        };
         assert_eq!(ret, 0);
     }
 }
@@ -93,7 +93,8 @@ impl DeviceBuilder {
     }
 
     /// Finish building the [`Device`]
-    pub fn watch(self, fd: RawFd) -> Device {
+    pub fn watch(self, fd: impl Into<OwnedFd>) -> Device {
+        let owned_fd = fd.into();
         let state = state();
         let channel = Channel::new();
         let queue: Arc<Queue> = channel.clone().into();
@@ -101,10 +102,12 @@ impl DeviceBuilder {
         let data = EpollData { ptr };
         let events = self.events;
         let mut event = EpollEvent { events, data };
-        let ret = unsafe { epoll_ctl(state.epoll_fd, 1, fd, &mut event) };
+        let ret = unsafe {
+            epoll_ctl(state.epoll_fd, 1, owned_fd.as_raw_fd(), &mut event)
+        };
         assert_eq!(ret, 0);
 
-        Device { channel, fd }
+        Device { channel, owned_fd }
     }
 }
 

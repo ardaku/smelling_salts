@@ -1,7 +1,10 @@
 use std::{
     convert::TryInto,
     mem::{self, MaybeUninit},
-    os::{raw, unix::io::RawFd},
+    os::{
+        fd::{AsRawFd, FromRawFd, OwnedFd, RawFd},
+        raw,
+    },
 };
 
 use async_main::async_main;
@@ -17,17 +20,16 @@ extern "C" {
     fn pipe2(pipefd: *mut [RawFd; 2], flags: raw::c_int) -> RawFd;
     fn write(fd: RawFd, buf: *const raw::c_void, count: usize) -> isize;
     fn read(fd: RawFd, buf: *mut raw::c_void, count: usize) -> isize;
-    fn close(fd: RawFd) -> raw::c_int;
 }
 
 /// A `PipeReceiver` device future.
-pub struct PipeReceiver(Option<Device>);
+pub struct PipeReceiver(Device);
 
 impl Notifier for PipeReceiver {
     type Event = u32;
 
     fn poll_next(mut self: Pin<&mut Self>, task: &mut Task<'_>) -> Poll<u32> {
-        let device = self.0.as_mut().unwrap();
+        let device = &mut self.0;
 
         if Pin::new(&mut *device).poll_next(task).is_pending() {
             return Pending;
@@ -35,8 +37,11 @@ impl Notifier for PipeReceiver {
 
         unsafe {
             let mut x = MaybeUninit::<u32>::uninit();
-            if read(device.fd(), x.as_mut_ptr().cast(), mem::size_of::<u32>())
-                == mem::size_of::<u32>().try_into().unwrap()
+            if read(
+                device.fd().as_raw_fd(),
+                x.as_mut_ptr().cast(),
+                mem::size_of::<u32>(),
+            ) == mem::size_of::<u32>().try_into().unwrap()
             {
                 Ready(x.assume_init())
             } else {
@@ -46,54 +51,40 @@ impl Notifier for PipeReceiver {
     }
 }
 
-impl Drop for PipeReceiver {
-    fn drop(&mut self) {
-        // Remove from watchlist
-        let device = self.0.take().unwrap();
-        let fd = device.fd();
-        drop(device);
-        // Close file descriptor
-        let ret = unsafe { close(fd) };
-        assert_eq!(0, ret);
-    }
-}
-
 /// A `PipeSender` device.
-pub struct PipeSender(RawFd);
+pub struct PipeSender(OwnedFd);
 
 impl PipeSender {
     /// Send a 32-bit value over the pipe.
     pub fn send(&self, value: u32) {
         let data = [value];
         let len: usize = unsafe {
-            write(self.0, data.as_ptr().cast(), mem::size_of::<u32>())
-                .try_into()
-                .unwrap()
+            write(
+                self.0.as_raw_fd(),
+                data.as_ptr().cast(),
+                mem::size_of::<u32>(),
+            )
+            .try_into()
+            .unwrap()
         };
         assert_eq!(len, mem::size_of::<u32>());
     }
 }
 
-impl Drop for PipeSender {
-    fn drop(&mut self) {
-        unsafe {
-            let ret = close(self.0);
-            assert_eq!(0, ret);
-        }
-    }
-}
-
 /// Create a new `Pipe`.
 pub fn pipe() -> (PipeReceiver, PipeSender) {
-    let [fd, sender] = unsafe {
+    let (fd, sender) = unsafe {
         // Create pipe for communication
         let mut pipe = mem::MaybeUninit::<[raw::c_int; 2]>::uninit();
         let ret = pipe2(pipe.as_mut_ptr(), O_CLOEXEC | O_NONBLOCK | O_DIRECT);
         assert!(ret >= 0);
-        pipe.assume_init()
+        let [fd, sender] = pipe.assume_init();
+        assert_ne!(fd, -1);
+        assert_ne!(sender, -1);
+        (OwnedFd::from_raw_fd(fd), OwnedFd::from_raw_fd(sender))
     };
 
-    let device = Some(Device::builder().input().watch(fd));
+    let device = Device::builder().input().watch(fd);
 
     (PipeReceiver(device), PipeSender(sender))
 }

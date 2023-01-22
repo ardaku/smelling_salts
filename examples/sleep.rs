@@ -1,7 +1,10 @@
 use std::{
     convert::TryInto,
     mem::{self, MaybeUninit},
-    os::{raw, unix::io::RawFd},
+    os::{
+        fd::{AsRawFd, FromRawFd, OwnedFd, RawFd},
+        raw,
+    },
     ptr,
     time::Duration,
 };
@@ -31,23 +34,10 @@ extern "C" {
         old_value: *mut ITimerSpec,
     ) -> raw::c_int;
     fn read(fd: RawFd, buf: *mut u64, count: usize) -> isize;
-    fn close(fd: RawFd) -> raw::c_int;
 }
 
 /// A `Timer` device future.
-pub struct Timer(Option<Device>);
-
-impl Drop for Timer {
-    fn drop(&mut self) {
-        // Remove from watchlist
-        let device = self.0.take().unwrap();
-        let fd = device.fd();
-        drop(device);
-        // Close file descriptor
-        let ret = unsafe { close(fd) };
-        assert_eq!(0, ret);
-    }
-}
+pub struct Timer(Device);
 
 impl Timer {
     /// Create a new `Timer`.
@@ -62,7 +52,9 @@ impl Timer {
         };
         let _ret = unsafe { timerfd_settime(fd, 0, &its, ptr::null_mut()) };
         assert_eq!(0, _ret);
-        Self(Some(Device::builder().input().watch(fd)))
+        assert_ne!(fd, -1);
+        let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+        Self(Device::builder().input().watch(fd))
     }
 }
 
@@ -70,7 +62,7 @@ impl Notifier for Timer {
     type Event = usize;
 
     fn poll_next(mut self: Pin<&mut Self>, task: &mut Task<'_>) -> Poll<usize> {
-        let device = self.0.as_mut().unwrap();
+        let device = &mut self.0;
 
         if Pin::new(&mut *device).poll_next(task).is_pending() {
             return Pending;
@@ -78,8 +70,11 @@ impl Notifier for Timer {
 
         unsafe {
             let mut x = MaybeUninit::<u64>::uninit();
-            if read(device.fd(), x.as_mut_ptr(), mem::size_of::<u64>())
-                == mem::size_of::<u64>().try_into().unwrap()
+            if read(
+                device.fd().as_raw_fd(),
+                x.as_mut_ptr(),
+                mem::size_of::<u64>(),
+            ) == mem::size_of::<u64>().try_into().unwrap()
             {
                 let count = x.assume_init().try_into().unwrap();
                 if count == 0 {
