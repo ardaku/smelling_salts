@@ -45,16 +45,16 @@ features = ["pasts"]
 [features]
 default = []
 
-example-platform-linux = []
+examples-platform-linux = []
 
 [[example]]
 name = "stdin"
-required-features = ["example-platform-linux"]
+required-features = ["examples-platform-linux"]
 
 [[example]]
 name = "pipe"
-required-features = ["example-platform-linux"]
+required-features = ["examples-platform-linux"]
 
 [[example]]
 name = "sleep"
-required-features = ["example-platform-linux"]
+required-features = ["examples-platform-linux"]
