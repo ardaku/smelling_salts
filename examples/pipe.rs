@@ -1,9 +1,9 @@
 use std::{
-    convert::TryInto,
-    io::Read,
+    fs::File,
+    io::{Read, Write},
     mem::{self, MaybeUninit},
     os::{
-        fd::{AsRawFd, FromRawFd, OwnedFd, RawFd},
+        fd::{FromRawFd, OwnedFd, RawFd},
         raw,
     },
 };
@@ -42,27 +42,14 @@ impl Notifier for PipeReceiver {
 }
 
 /// A `PipeSender` device.
-pub struct PipeSender(OwnedFd);
+pub struct PipeSender(File);
 
 impl PipeSender {
     /// Send a 32-bit value over the pipe.
-    pub fn send(&self, value: u32) {
-        extern "C" {
-            fn write(fd: RawFd, buf: *const raw::c_void, count: usize)
-                -> isize;
-        }
-
-        let data = [value];
-        let len: usize = unsafe {
-            write(
-                self.0.as_raw_fd(),
-                data.as_ptr().cast(),
-                mem::size_of::<u32>(),
-            )
-            .try_into()
-            .unwrap()
-        };
-        assert_eq!(len, mem::size_of::<u32>());
+    pub fn send(&mut self, value: u32) {
+        self.0
+            .write_all(&value.to_ne_bytes())
+            .expect("Failed to send");
     }
 }
 
@@ -81,7 +68,7 @@ pub fn pipe() -> (PipeReceiver, PipeSender) {
 
     let device = Device::builder().input().watch(fd);
 
-    (PipeReceiver(device), PipeSender(sender))
+    (PipeReceiver(device), PipeSender(sender.into()))
 }
 
 // Usage
@@ -90,7 +77,7 @@ const MAGIC_NUMBER: u32 = 0xDEAD_BEEF;
 
 #[async_main]
 async fn main(_spawner: impl Spawn) {
-    let (mut recver, sender) = pipe();
+    let (mut recver, mut sender) = pipe();
 
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_secs(1));
