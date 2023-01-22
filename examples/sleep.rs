@@ -1,8 +1,9 @@
 use std::{
     convert::TryInto,
-    mem::{self, MaybeUninit},
+    io::Read,
+    mem,
     os::{
-        fd::{AsRawFd, FromRawFd, OwnedFd, RawFd},
+        fd::{FromRawFd, OwnedFd, RawFd},
         raw,
     },
     ptr,
@@ -33,7 +34,6 @@ extern "C" {
         new_value: *const ITimerSpec,
         old_value: *mut ITimerSpec,
     ) -> raw::c_int;
-    fn read(fd: RawFd, buf: *mut u64, count: usize) -> isize;
 }
 
 /// A `Timer` device future.
@@ -51,9 +51,12 @@ impl Timer {
             value: TimeSpec { sec, nsec },
         };
         let _ret = unsafe { timerfd_settime(fd, 0, &its, ptr::null_mut()) };
-        assert_eq!(0, _ret);
+
+        assert_eq!(_ret, 0);
         assert_ne!(fd, -1);
+
         let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+
         Self(Device::builder().input().watch(fd))
     }
 }
@@ -62,27 +65,18 @@ impl Notifier for Timer {
     type Event = usize;
 
     fn poll_next(mut self: Pin<&mut Self>, task: &mut Task<'_>) -> Poll<usize> {
-        let device = &mut self.0;
+        while let Ready(()) = Pin::new(&mut self.0).poll_next(task) {
+            let mut bytes = [0; mem::size_of::<u64>()];
+            let Err(e) = self.0.read_exact(&mut bytes) else {
+                let count = u64::from_ne_bytes(bytes);
 
-        if Pin::new(&mut *device).poll_next(task).is_pending() {
-            return Pending;
+                return Ready(count.try_into().unwrap_or(usize::MAX));
+            };
+
+            dbg!(e);
         }
 
-        unsafe {
-            let mut x = MaybeUninit::<u64>::uninit();
-            if read(device.as_raw_fd(), x.as_mut_ptr(), mem::size_of::<u64>())
-                == mem::size_of::<u64>().try_into().unwrap()
-            {
-                let count = x.assume_init().try_into().unwrap();
-                if count == 0 {
-                    Pending
-                } else {
-                    Ready(count)
-                }
-            } else {
-                Pending
-            }
-        }
+        Pending
     }
 }
 
@@ -90,10 +84,13 @@ impl Notifier for Timer {
 
 #[async_main]
 async fn main(_spawner: impl Spawn) {
-    let mut timer = Timer::new(std::time::Duration::from_secs_f32(1.0));
+    let mut timer = Timer::new(Duration::from_secs_f32(1.0));
+
     println!("Sleeping for 1 second 5 times…");
+
     for i in 1..=5 {
-        timer.next().await;
-        println!("Slept {i} time(s)!");
+        let n = timer.next().await;
+
+        println!("Slept {i} time(s)! [{n}]");
     }
 }

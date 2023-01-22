@@ -1,5 +1,6 @@
 use std::{
     convert::TryInto,
+    io::Read,
     mem::{self, MaybeUninit},
     os::{
         fd::{AsRawFd, FromRawFd, OwnedFd, RawFd},
@@ -18,8 +19,6 @@ const O_DIRECT: raw::c_int = 0o0040000;
 
 extern "C" {
     fn pipe2(pipefd: *mut [RawFd; 2], flags: raw::c_int) -> RawFd;
-    fn write(fd: RawFd, buf: *const raw::c_void, count: usize) -> isize;
-    fn read(fd: RawFd, buf: *mut raw::c_void, count: usize) -> isize;
 }
 
 /// A `PipeReceiver` device future.
@@ -29,25 +28,16 @@ impl Notifier for PipeReceiver {
     type Event = u32;
 
     fn poll_next(mut self: Pin<&mut Self>, task: &mut Task<'_>) -> Poll<u32> {
-        let device = &mut self.0;
+        while let Ready(()) = Pin::new(&mut self.0).poll_next(task) {
+            let mut bytes = [0; mem::size_of::<u32>()];
+            let Err(e) = self.0.read_exact(&mut bytes) else {
+                return Ready(u32::from_ne_bytes(bytes));
+            };
 
-        if Pin::new(&mut *device).poll_next(task).is_pending() {
-            return Pending;
+            dbg!(e);
         }
 
-        unsafe {
-            let mut x = MaybeUninit::<u32>::uninit();
-            if read(
-                device.as_raw_fd(),
-                x.as_mut_ptr().cast(),
-                mem::size_of::<u32>(),
-            ) == mem::size_of::<u32>().try_into().unwrap()
-            {
-                Ready(x.assume_init())
-            } else {
-                Pending
-            }
-        }
+        Pending
     }
 }
 
@@ -57,6 +47,11 @@ pub struct PipeSender(OwnedFd);
 impl PipeSender {
     /// Send a 32-bit value over the pipe.
     pub fn send(&self, value: u32) {
+        extern "C" {
+            fn write(fd: RawFd, buf: *const raw::c_void, count: usize)
+                -> isize;
+        }
+
         let data = [value];
         let len: usize = unsafe {
             write(
@@ -75,7 +70,7 @@ impl PipeSender {
 pub fn pipe() -> (PipeReceiver, PipeSender) {
     let (fd, sender) = unsafe {
         // Create pipe for communication
-        let mut pipe = mem::MaybeUninit::<[raw::c_int; 2]>::uninit();
+        let mut pipe = MaybeUninit::<[raw::c_int; 2]>::uninit();
         let ret = pipe2(pipe.as_mut_ptr(), O_CLOEXEC | O_NONBLOCK | O_DIRECT);
         assert!(ret >= 0);
         let [fd, sender] = pipe.assume_init();

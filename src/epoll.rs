@@ -13,6 +13,7 @@
 //! ```
 
 use std::{
+    io::{Error, Read, Write},
     mem::{self, MaybeUninit},
     os::{
         fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd, RawFd},
@@ -27,6 +28,8 @@ use whisk::{Channel, Queue};
 const EPOLLIN: u32 = 0x0001;
 const EPOLLOUT: u32 = 0x0004;
 const EPOLLET: u32 = 1 << 31;
+
+type Result<T = (), E = Error> = std::result::Result<T, E>;
 
 /// Device handle
 ///
@@ -53,6 +56,56 @@ impl AsFd for Device {
 impl AsRawFd for Device {
     fn as_raw_fd(&self) -> RawFd {
         self.owned_fd.as_raw_fd()
+    }
+}
+
+impl Read for Device {
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+        (&*self).read(buf)
+    }
+}
+
+impl Read for &Device {
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+        let len = buf.len().min(isize::MAX as _);
+
+        extern "C" {
+            fn read(fd: RawFd, buf: *mut c_void, count: usize) -> isize;
+        }
+
+        let bytes_read =
+            unsafe { read(self.as_raw_fd(), buf.as_mut_ptr().cast(), len) };
+
+        bytes_read.try_into().map_err(|_| Error::last_os_error())
+    }
+}
+
+impl Write for Device {
+    fn write(&mut self, buf: &[u8]) -> Result<usize> {
+        (&*self).write(buf)
+    }
+
+    fn flush(&mut self) -> Result {
+        (&*self).flush()
+    }
+}
+
+impl Write for &Device {
+    fn write(&mut self, buf: &[u8]) -> Result<usize> {
+        let len = buf.len().min(isize::MAX as _);
+
+        extern "C" {
+            fn write(fd: RawFd, buf: *const c_void, count: usize) -> isize;
+        }
+
+        let bytes_written =
+            unsafe { write(self.as_raw_fd(), buf.as_ptr().cast(), len) };
+
+        bytes_written.try_into().map_err(|_| Error::last_os_error())
+    }
+
+    fn flush(&mut self) -> Result {
+        Ok(())
     }
 }
 
