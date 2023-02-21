@@ -33,7 +33,7 @@ impl Device {
     }
 }
 
-impl Notifier for Device {
+impl Notify for Device {
     type Event = ();
 
     fn poll_next(mut self: Pin<&mut Self>, task: &mut Task<'_>) -> Poll {

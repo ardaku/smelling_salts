@@ -10,7 +10,7 @@ use std::{
     time::Duration,
 };
 
-use async_main::async_main;
+use async_main::{async_main, Spawn};
 use pasts::prelude::*;
 use smelling_salts::{Device, Watch};
 
@@ -26,7 +26,7 @@ extern "C" {
 /// A `PipeReceiver` device future.
 pub struct PipeReceiver(Device);
 
-impl Notifier for PipeReceiver {
+impl Notify for PipeReceiver {
     type Event = u32;
 
     fn poll_next(mut self: Pin<&mut Self>, task: &mut Task<'_>) -> Poll<u32> {

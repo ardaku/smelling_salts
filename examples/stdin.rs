@@ -3,7 +3,7 @@ use std::{
     os::fd::AsFd,
 };
 
-use async_main::async_main;
+use async_main::{async_main, Spawn};
 use pasts::prelude::*;
 use smelling_salts::{Device, Watch};
 
@@ -26,7 +26,7 @@ impl Stdin {
     }
 }
 
-impl Notifier for Stdin {
+impl Notify for Stdin {
     type Event = String;
 
     fn poll_next(

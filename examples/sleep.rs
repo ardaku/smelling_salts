@@ -9,7 +9,7 @@ use std::{
     time::Duration,
 };
 
-use async_main::async_main;
+use async_main::{async_main, Spawn};
 use pasts::prelude::*;
 use smelling_salts::{Device, OsDevice, Watch};
 
@@ -60,7 +60,7 @@ impl Timer {
     }
 }
 
-impl Notifier for Timer {
+impl Notify for Timer {
     type Event = usize;
 
     fn poll_next(mut self: Pin<&mut Self>, task: &mut Task<'_>) -> Poll<usize> {
