@@ -19,12 +19,12 @@
 //!
 //! An [`OsDevice`] by itself isn't that useful, though.  When you have a handle
 //! to a device, you want to asynchronously watch it for events.  For this, you
-//! construct a [`Device`], which implements [`Notifier`](pasts::Notifier).
-//! But, general devices aren't that useful either, so you'll need to wrap it
-//! in your own custom type.  Usually, you will filter out some of the events,
-//! so you'll need to implement [`Notifier`](pasts::Notifier).
+//! construct a [`Device`], which implements [`Notify`](pasts::notify::Notify).
+//! But, general devices aren't that useful either, so you'll need to wrap it in
+//! your own custom type.  Usually, you will filter out some of the events, so
+//! you'll need to implement [`Notify`](pasts::notify::Notify).
 //!
-//! Here's a simple example implementing a [`Notifier`](pasts::Notifier) for
+//! Here's a simple example implementing a [`Notify`](pasts::notify::Notify) for
 //! stdin line reading:
 //!
 //! ```rust,no_run

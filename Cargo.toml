@@ -9,7 +9,7 @@
 
 [package]
 name = "smelling_salts"
-version = "0.12.0"
+version = "0.12.1"
 license = "Apache-2.0 OR BSL-1.0 OR MIT"
 description = "Abstraction over OS APIs to handle asynchronous device waking"
 repository = "https://github.com/ardaku/smelling_salts"
